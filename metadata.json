@@ -1,0 +1,6 @@
+{
+  "name": "Shyam Creations",
+  "description": "Artisanal South Asian bridal jewelry rentals and HennaBliss mehandi studio experience with client booking and admin portal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
