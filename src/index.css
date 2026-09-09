@@ -1,22 +1,65 @@
 @import "tailwindcss";
 
+:root {
+  /* ============================================================
+     IVORY & GOLD LUXURY COLOR SYSTEM
+     ============================================================ */
+  --sc-bg: #FBF7F0;          /* warm ivory page background */
+  --sc-bg-soft: #F5EFE3;     /* soft cream section / drawer background */
+  --sc-surface: #FFFFFF;     /* white card / panel fill */
+  --sc-surface-alt: #14110E; /* deepest charcoal (footer, admin, auth) */
+  --sc-surface-alt-card: #221D18;
+  --sc-text: #2B231A;
+  --sc-text-dim: #6B5D4A;
+  --sc-text-dimmer: #8A7F72;
+
+  /* Gold brand palette */
+  --sc-emerald: #C08A34;
+  --sc-emerald-light: #D4A24C;
+  --sc-emerald-lux: #E0B45F;
+  --sc-emerald-dark: #8C5F20;
+  --sc-emerald-deep: #1A1714;
+  --sc-emerald-50: #F7EEDD;
+  --sc-emerald-100: #F0E0BF;
+  --sc-emerald-200: #E8CE9B;
+  --sc-emerald-300: #E0B45F;
+  --sc-emerald-400: #D4A24C;
+  --sc-emerald-500: #C08A34;
+  --sc-emerald-600: #A8762B;
+  --sc-emerald-700: #8C5F20;
+  --sc-emerald-800: #6F4A18;
+  --sc-emerald-900: #523611;
+
+  /* Accent gold for highlights */
+  --sc-gold: #C08A34;
+  --sc-gold-light: #D4A24C;
+  --sc-gold-deep: #8C5F20;
+
+  /* Neutrals */
+  --sc-border: #E8DCC4;
+  --sc-border-dark: #2A2118;
+  --sc-accent-warm: #F0E7D6;
+}
+
 @layer base {
   body {
     font-family: 'DM Sans', sans-serif;
-    color: #1c1c1a;
+    background: var(--sc-bg);
+    color: var(--sc-text);
+    line-height: 1.6;
   }
   h1, h2, h3, h4, .font-serif, .font-display {
     font-family: 'Playfair Display', serif;
+    color: var(--sc-text);
+  }
+  .antialiased {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-.font-sans-body {
-  font-family: 'DM Sans', sans-serif;
-}
-
-.font-serif-display {
-  font-family: 'Playfair Display', serif;
-}
+.font-sans-body { font-family: 'DM Sans', sans-serif; }
+.font-serif-display { font-family: 'Playfair Display', serif; }
 
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -24,31 +67,173 @@
   vertical-align: middle;
 }
 
+/* ============================================================
+   BUTTON VARIANTS
+   ============================================================ */
 .btn-royal {
   text-transform: uppercase;
   font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.15em;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.btn-emerald {
+  --tw-bg-opacity: 1;
+  background-color: rgb(192, 138, 52 / var(--tw-bg-opacity));
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.35s cubic-bezier(0.4, 0, 0.2, 1), filter 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.btn-emerald:hover {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px -10px rgba(192, 138, 52, 0.45);
+}
+.btn-emerald::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -130%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.4), transparent);
+  transform: skewX(-22deg);
+  transition: left 0.65s ease;
+}
+.btn-emerald:hover::after { left: 140%; }
+
+.btn-emerald-outline {
+  background: transparent;
+  border: 1px solid rgba(192, 138, 52, 0.5);
+  color: var(--sc-emerald);
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-emerald-outline:hover {
+  background: var(--sc-emerald);
+  color: #fff;
+}
+
+/* ============================================================
+   CARD & SHADOWS
+   ============================================================ */
 .lux-card {
-  background-color: #fcf9f5;
-  box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.03);
-  border: 0.5px solid rgba(199, 154, 59, 0.15);
+  background-color: var(--sc-bg-soft);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+  border: 0.5px solid rgba(192, 138, 52, 0.12);
+}
+.lux-card-dark {
+  background-color: var(--sc-surface-alt);
+  border: 0.5px solid rgba(192, 138, 52, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+.lux-card-shadow { box-shadow: 0 10px 30px rgba(0,0,0,0.04); }
+
+.shadow-soft { box-shadow: 0 4px 24px rgba(28, 28, 26, 0.06); }
+.shadow-lift { box-shadow: 0 18px 44px -14px rgba(28, 28, 26, 0.20), 0 6px 16px rgba(28, 28, 26, 0.06); }
+.shadow-emerald { box-shadow: 0 18px 44px -14px rgba(192, 138, 52, 0.40), 0 6px 16px rgba(192, 138, 52, 0.15); }
+
+/* Emerald gradient text */
+.text-emerald-gradient {
+  background: linear-gradient(115deg, #E0B45F 0%, #C08A34 42%, #8C5F20 78%, #D4A24C 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
-.lux-card-shadow {
-  box-shadow: 0px 10px 30px rgba(0,0,0,0.04);
+/* Gold gradient still used for small accents */
+.text-gold-gradient {
+  background: linear-gradient(115deg, #E0B45F 0%, #C08A34 42%, #8C5F20 78%, #D4A24C 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
+/* Card hover lift */
+.hover-lift {
+  transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.45s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s;
+}
+.hover-lift:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 26px 50px -18px rgba(28, 28, 26, 0.24);
+}
+
+/* Emerald top accent on premium cards */
+.em-top-line { position: relative; }
+.em-top-line::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  border-top-left-radius: 1rem;
+  border-top-right-radius: 1rem;
+  background: linear-gradient(90deg, transparent, var(--sc-emerald) 35%, var(--sc-emerald-light) 50%, var(--sc-emerald) 65%, transparent);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.em-top-line:hover::before { opacity: 1; }
+
+/* Fade-up reveal */
+@keyframes sc-reveal-up {
+  from { opacity: 0; transform: translateY(26px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-reveal { animation: sc-reveal-up 0.85s cubic-bezier(0.4, 0, 0.2, 1) both; }
+.reveal-delay-1 { animation-delay: 0.12s; }
+.reveal-delay-2 { animation-delay: 0.26s; }
+.reveal-delay-3 { animation-delay: 0.4s; }
+.reveal-delay-4 { animation-delay: 0.54s; }
+.reveal-delay-5 { animation-delay: 0.68s; }
+
+/* Pulse */
+@keyframes sc-emerald-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 138, 52, 0.35); }
+  50% { box-shadow: 0 0 0 7px rgba(192, 138, 52, 0); }
+}
+.em-pulse { animation: sc-emerald-pulse 2.6s infinite; }
+
+@keyframes sc-gold-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 138, 52, 0.35); }
+  50% { box-shadow: 0 0 0 7px rgba(192, 138, 52, 0); }
+}
+.gold-pulse { animation: sc-gold-pulse 2.6s infinite; }
+
+@keyframes sc-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-float { animation: sc-float 6s ease-in-out infinite; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #F0E7D6; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(var(--sc-emerald), var(--sc-emerald-dark));
+  border-radius: 10px;
+  border: 2px solid #F0E7D6;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--sc-emerald-dark); }
+html { scrollbar-color: var(--sc-emerald) #F0E7D6; }
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-reveal, .em-pulse, .gold-pulse, .animate-float { animation: none !important; }
+  .btn-emerald, .btn-emerald-outline, .hover-lift { transition-duration: 0.01ms; }
+}
+
+/* Calendar grid */
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 4px;
 }
-
 .date-cell {
   aspect-ratio: 1/1;
   display: flex;
@@ -57,26 +242,12 @@
   cursor: pointer;
   font-size: 14px;
 }
-
 .date-cell:hover:not(.disabled) {
-  background-color: #c79a3b;
+  background-color: var(--sc-emerald);
   color: white;
 }
+.date-range-selected { background-color: rgba(192, 138, 52, 0.2); }
+.date-active { background-color: var(--sc-emerald) !important; color: white !important; }
 
-.date-range-selected {
-  background-color: rgba(199, 154, 59, 0.2);
-}
-
-.date-active {
-  background-color: #c79a3b !important;
-  color: white !important;
-}
-
-.scroll-hide::-webkit-scrollbar {
-  display: none;
-}
-.scroll-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
+.scroll-hide::-webkit-scrollbar { display: none; }
+.scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }

@@ -700,16 +700,7 @@ export async function fetchSupabaseJewellery(): Promise<any[] | null> {
   }
 
   try {
-    const candidateTables = [
-      'jewellery',
-      'jewellery_items',
-      'jewellery_products',
-      'products',
-      'jewellery_inventory',
-      'jewels',
-      'items',
-      'jewellery_catalog'
-    ];
+    const candidateTables = ['jewellery'];
 
     let combinedRows: any[] = [];
     const seenIds = new Set<string>();
@@ -1437,6 +1428,52 @@ export interface UserCombinedBookings {
  * 2. 'jewellery_bookings' (Jewellery rentals & order bookings)
  * 3. 'jewellery_customers' (Jewellery express checkout dispatch orders)
  */
+// Maps Razorpay payment statuses to customer-friendly labels
+export function getPaymentDisplayLabel(status?: string): 'Paid' | 'Pending' | 'Failed' | 'Refunded' | null {
+  if (!status) return null;
+  const s = status.toUpperCase();
+  if (['PAID', 'CAPTURED', 'COMPLETED'].includes(s) || s.includes('PAID')) return 'Paid';
+  if (['FAILED', 'FAILURE'].includes(s)) return 'Failed';
+  if (['REVERSED', 'REFUNDED'].includes(s) || s.includes('REFUND')) return 'Refunded';
+  return 'Pending';
+}
+
+/**
+ * Fetch payment records for a list of booking refs (idempotent, safe with empty list).
+ * Returns a map: booking_ref (uppercase) -> { status, method, paymentId }
+ */
+export async function fetchPaymentInfoByRefs(
+  refs: string[]
+): Promise<Map<string, { status: string; method: string; paymentId: string }>> {
+  const map = new Map<string, { status: string; method: string; paymentId: string }>();
+  const uniqueRefs = Array.from(new Set((refs || []).filter(Boolean)));
+  if (uniqueRefs.length === 0) return map;
+
+  try {
+    if (!isSupabaseConfigured()) return map;
+    const { data } = await supabase
+      .from('payments')
+      .select('booking_ref, payment_status, payment_method, razorpay_payment_id')
+      .in('booking_ref', uniqueRefs);
+
+    if (Array.isArray(data)) {
+      for (const row of data as any[]) {
+        const key = String(row.booking_ref || '').toUpperCase();
+        if (!key) continue;
+        // Prefer the most recent record per ref (latest by created order in response)
+        map.set(key, {
+          status: String(row.payment_status || ''),
+          method: String(row.payment_method || ''),
+          paymentId: String(row.razorpay_payment_id || ''),
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Payment info lookup failed:', err);
+  }
+  return map;
+}
+
 export async function fetchAllUserBookingsAndOrdersByPhone(
   searchQuery: string
 ): Promise<UserCombinedBookings> {
@@ -1465,22 +1502,34 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
       .select('*')
       .or(bookingQueryFilter);
 
+    // Fetch payment records for the found booking refs so the customer can
+    // see Paid / Pending status and the Razorpay transaction id
+    const paymentInfoMap = await fetchPaymentInfoByRefs(
+      (bookingsData || []).map((r: any) => r.ref)
+    );
+
     if (bookingsData && bookingsData.length > 0) {
-      result.hennaBookings = bookingsData.map((row: DBBookingRow) => ({
-        id: row.id || `hb-${Date.now()}`,
-        ref: row.ref || `SC-${Math.floor(100 + Math.random() * 900)}`,
-        serviceName: row.service || 'Mehendi Appointment',
-        date: row.date || new Date().toISOString().split('T')[0],
-        timeSlot: row.slot || '10:00 AM',
-        location: row.notes || 'Studio Pickup / Client Location',
-        clientName: row.name || 'Client',
-        clientEmail: row.email || '',
-        phone: row.phone || '',
-        wa: row.wa || '',
-        specialRequests: row.notes || '',
-        status: (row.status as any) || 'Confirmed',
-        type: row.service?.toLowerCase().includes('jewel') ? 'jewellery' : 'henna',
-      }));
+      result.hennaBookings = bookingsData.map((row: DBBookingRow) => {
+        const payInfo = paymentInfoMap.get((row.ref || '').toUpperCase());
+        return {
+          id: row.id || `hb-${Date.now()}`,
+          ref: row.ref || `SC-${Math.floor(100 + Math.random() * 900)}`,
+          serviceName: row.service || 'Mehendi Appointment',
+          date: row.date || new Date().toISOString().split('T')[0],
+          timeSlot: row.slot || '10:00 AM',
+          location: row.notes || 'Studio Pickup / Client Location',
+          clientName: row.name || 'Client',
+          clientEmail: row.email || '',
+          phone: row.phone || '',
+          wa: row.wa || '',
+          specialRequests: row.notes || '',
+          status: (row.status as any) || 'Confirmed',
+          type: row.service?.toLowerCase().includes('jewel') ? 'jewellery' : 'henna',
+          paymentStatus: payInfo?.status || undefined,
+          paymentMethod: payInfo?.method || undefined,
+          transactionId: payInfo?.paymentId || undefined,
+        };
+      });
     }
 
     // 2. Query 'jewellery_bookings' table
@@ -1528,6 +1577,10 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         returnDue: jb.endDate || jb.startDate,
         dailyRate: jb.dailyRate || '₹1,500/day',
         status: jb.status === 'Returned' ? 'Returned' : (jb.status === 'Overdue' ? 'Overdue' : 'Active Rental'),
+        paymentStatus: jb.paymentStatus,
+        paymentMethod: jb.paymentMethod,
+        transactionId: jb.transactionId,
+        totalAmount: jb.totalPrice,
       }));
     }
 
@@ -1574,6 +1627,13 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         returnDue: jc.deliveryAddress || 'Courier Dispatch',
         dailyRate: jc.totalAmount,
         status: jc.orderStatus === 'Delivered' ? 'Returned' : 'Active Rental',
+        paymentStatus: jc.paymentStatus,
+        paymentMethod: jc.paymentMethod,
+        transactionId: jc.upiTransactionId,
+        totalAmount: jc.totalAmount,
+        itemPrice: jc.itemPrice,
+        shippingFee: jc.shippingFee,
+        deliveryAddress: jc.deliveryAddress,
       }));
 
       result.jewelleryRentals = [...result.jewelleryRentals, ...customerRentals];
@@ -1683,6 +1743,65 @@ export function logoutCustomerAccount(): void {
 }
 
 /**
+ * Check if customer exists by email or phone
+ */
+export async function checkCustomerExists(
+  emailOrPhone: string
+): Promise<{ exists: boolean; matchedBy?: 'email' | 'phone'; user?: Partial<CustomerAccount> }> {
+  const query = emailOrPhone.trim().toLowerCase();
+  const digitsOnly = emailOrPhone.replace(/[^0-9]/g, '');
+
+  if (!query) return { exists: false };
+
+  // 1. Check Supabase
+  if (isSupabaseConfigured()) {
+    try {
+      let filter = `email.ilike.${query}`;
+      if (digitsOnly.length >= 7) {
+        filter += `,phone.ilike.%${digitsOnly}%`;
+      }
+
+      const { data, error } = await supabase
+        .from('customer_accounts')
+        .select('id, name, email, phone')
+        .or(filter);
+
+      if (!error && data && data.length > 0) {
+        const found = data[0];
+        const matchedBy = found.email.toLowerCase() === query ? 'email' : 'phone';
+        return { exists: true, matchedBy, user: found };
+      }
+    } catch (e) {
+      console.warn('Error checking customer existence in Supabase:', e);
+    }
+  }
+
+  // 2. Check local accounts
+  const localAccounts = getLocalCustomerAccounts();
+  const foundLocal = localAccounts.find(
+    (a) =>
+      a.email.toLowerCase() === query ||
+      (digitsOnly.length >= 7 && a.phone.replace(/[^0-9]/g, '').includes(digitsOnly))
+  );
+
+  if (foundLocal) {
+    const matchedBy = foundLocal.email.toLowerCase() === query ? 'email' : 'phone';
+    return { exists: true, matchedBy, user: foundLocal };
+  }
+
+  // Check demo user
+  if (query === 'client@shyamcreations.com' || (digitsOnly.length >= 7 && '9363710342'.includes(digitsOnly))) {
+    return {
+      exists: true,
+      matchedBy: query.includes('@') ? 'email' : 'phone',
+      user: { name: 'Sanya Alisha', email: 'client@shyamcreations.com', phone: '+91 9363710342' },
+    };
+  }
+
+  return { exists: false };
+}
+
+/**
  * Register a new Customer Account in Supabase and locally
  */
 export async function signupCustomerAccount(data: {
@@ -1692,34 +1811,49 @@ export async function signupCustomerAccount(data: {
   password: string;
 }): Promise<{ success: boolean; user?: CustomerAccount; error?: string }> {
   const normalizedEmail = data.email.trim().toLowerCase();
-  const normalizedPhone = data.phone.trim();
+  const rawPhone = data.phone.trim();
+  const digitsOnly = rawPhone.replace(/[^0-9]/g, '');
   const trimmedName = data.name.trim();
 
-  if (!trimmedName || !normalizedEmail || !normalizedPhone || !data.password) {
-    return { success: false, error: 'Please provide name, email, phone number, and password.' };
+  if (!trimmedName || !normalizedEmail || digitsOnly.length < 10 || !data.password) {
+    return { success: false, error: 'Please provide valid name, email, 10-digit phone number, and password.' };
   }
 
   // 1. Try Supabase if configured
   if (isSupabaseConfigured()) {
     try {
       // Check existing email
-      const { data: existing, error: checkError } = await supabase
+      const { data: emailMatch } = await supabase
         .from('customer_accounts')
         .select('id, email, phone')
-        .eq('email', normalizedEmail)
+        .ilike('email', normalizedEmail)
         .maybeSingle();
 
-      if (existing) {
+      if (emailMatch) {
         return {
           success: false,
-          error: 'An account with this email already exists. Please sign in.',
+          error: 'An account with this email address already exists. Please sign in or use Forgot Password.',
+        };
+      }
+
+      // Check existing phone
+      const { data: phoneMatch } = await supabase
+        .from('customer_accounts')
+        .select('id, email, phone')
+        .or(`phone.ilike.%${digitsOnly}%,phone.eq.${rawPhone}`)
+        .maybeSingle();
+
+      if (phoneMatch) {
+        return {
+          success: false,
+          error: 'An account with this mobile phone number already exists. Please sign in or use Forgot Password.',
         };
       }
 
       const newAccountPayload = {
         name: trimmedName,
         email: normalizedEmail,
-        phone: normalizedPhone,
+        phone: rawPhone,
         password: data.password, // Stored in customer_accounts table
         wishlist: [],
         cart: [],
@@ -1755,14 +1889,21 @@ export async function signupCustomerAccount(data: {
 
   // 2. Local Fallback Database (Works offline or if table not yet run in Supabase)
   const localAccounts = getLocalCustomerAccounts();
-  const existingLocal = localAccounts.find(
-    (a) => a.email.toLowerCase() === normalizedEmail || a.phone === normalizedPhone
-  );
-
-  if (existingLocal) {
+  const existingEmail = localAccounts.find((a) => a.email.toLowerCase() === normalizedEmail);
+  if (existingEmail) {
     return {
       success: false,
-      error: 'An account with this email or phone number already exists. Please sign in.',
+      error: 'An account with this email address already exists. Please sign in or use Forgot Password.',
+    };
+  }
+
+  const existingPhone = localAccounts.find(
+    (a) => a.phone.replace(/[^0-9]/g, '') === digitsOnly || a.phone === rawPhone
+  );
+  if (existingPhone) {
+    return {
+      success: false,
+      error: 'An account with this phone number already exists. Please sign in or use Forgot Password.',
     };
   }
 
@@ -1770,7 +1911,7 @@ export async function signupCustomerAccount(data: {
     id: `cust-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
     name: trimmedName,
     email: normalizedEmail,
-    phone: normalizedPhone,
+    phone: rawPhone,
     password: data.password,
     wishlist: [],
     cart: [],
@@ -1782,6 +1923,136 @@ export async function signupCustomerAccount(data: {
   setStoredCustomerAccount(localUser);
 
   return { success: true, user: localUser };
+}
+
+/**
+ * Request Password Reset: Verifies account exists and creates a 6-digit reset OTP
+ */
+export async function requestCustomerPasswordReset(
+  emailOrPhone: string
+): Promise<{ success: boolean; otp?: string; error?: string; accountName?: string; contactTarget?: string }> {
+  const query = emailOrPhone.trim().toLowerCase();
+  const digitsOnly = emailOrPhone.replace(/[^0-9]/g, '');
+
+  if (!query) {
+    return { success: false, error: 'Please enter your registered Email address or Mobile number.' };
+  }
+
+  // Check existence
+  const check = await checkCustomerExists(emailOrPhone);
+  if (!check.exists || !check.user) {
+    return {
+      success: false,
+      error: 'No account found with this email or phone number. Please check the details or create a new account.',
+    };
+  }
+
+  // Generate a reliable 6-digit OTP code (e.g. 842195)
+  const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+  // Store OTP temporarily in sessionStorage for verification
+  try {
+    sessionStorage.setItem(
+      'shyam_pwd_reset_session',
+      JSON.stringify({
+        identifier: query,
+        digitsOnly,
+        otp: generatedOtp,
+        accountName: check.user.name || 'Client',
+        email: check.user.email,
+        phone: check.user.phone,
+        timestamp: Date.now(),
+      })
+    );
+  } catch (e) {
+    console.warn('Session storage error:', e);
+  }
+
+  return {
+    success: true,
+    otp: generatedOtp,
+    accountName: check.user.name || 'Client',
+    contactTarget: check.user.email || check.user.phone || emailOrPhone,
+  };
+}
+
+/**
+ * Reset Customer Account Password in Supabase and local cache
+ */
+export async function resetCustomerPassword(
+  emailOrPhone: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string; user?: CustomerAccount }> {
+  const query = emailOrPhone.trim().toLowerCase();
+  const digitsOnly = emailOrPhone.replace(/[^0-9]/g, '');
+
+  if (!query || !newPassword || newPassword.length < 4) {
+    return { success: false, error: 'Password must be at least 4 characters long.' };
+  }
+
+  let updatedUser: CustomerAccount | undefined;
+
+  // 1. Update in Supabase
+  if (isSupabaseConfigured()) {
+    try {
+      let filter = `email.ilike.${query}`;
+      if (digitsOnly.length >= 7) {
+        filter += `,phone.ilike.%${digitsOnly}%`;
+      }
+
+      const { data, error } = await supabase
+        .from('customer_accounts')
+        .update({ password: newPassword.trim() })
+        .or(filter)
+        .select();
+
+      if (!error && data && data.length > 0) {
+        const row = data[0];
+        updatedUser = {
+          id: row.id,
+          name: row.name,
+          email: row.email,
+          phone: row.phone,
+          wishlist: Array.isArray(row.wishlist) ? row.wishlist : [],
+          cart: Array.isArray(row.cart) ? row.cart : [],
+          created_at: row.created_at,
+        };
+      }
+    } catch (e) {
+      console.warn('Error resetting password in Supabase:', e);
+    }
+  }
+
+  // 2. Update in Local Storage cache
+  const localAccounts = getLocalCustomerAccounts();
+  const idx = localAccounts.findIndex(
+    (a) =>
+      a.email.toLowerCase() === query ||
+      (digitsOnly.length >= 7 && a.phone.replace(/[^0-9]/g, '').includes(digitsOnly))
+  );
+
+  if (idx >= 0) {
+    localAccounts[idx].password = newPassword.trim();
+    saveLocalCustomerAccounts(localAccounts);
+    if (!updatedUser) {
+      updatedUser = localAccounts[idx];
+    }
+  }
+
+  // Remove temporary reset session
+  try {
+    sessionStorage.removeItem('shyam_pwd_reset_session');
+  } catch {}
+
+  if (updatedUser) {
+    setStoredCustomerAccount(updatedUser);
+    return { success: true, user: updatedUser };
+  }
+
+  return {
+    success: true,
+    error: undefined,
+  };
 }
 
 /**

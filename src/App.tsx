@@ -74,9 +74,11 @@ export function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [pendingAuthAction, setPendingAuthAction] = useState<PendingAuthAction | null>(null);
 
-  // Cart & Wishlist State (Persistent across sessions and guest browsing)
+  // Cart & Wishlist State (Only visible & stored when customer is signed in)
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     try {
+      const storedAccount = localStorage.getItem('shyam_customer_account');
+      if (!storedAccount) return [];
       const stored = localStorage.getItem('shyam_jewellery_cart');
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -84,12 +86,9 @@ export function App() {
           return parsed;
         }
       }
-      const storedAccount = localStorage.getItem('shyam_customer_account');
-      if (storedAccount) {
-        const parsed = JSON.parse(storedAccount);
-        if (parsed?.cart && Array.isArray(parsed.cart)) {
-          return parsed.cart;
-        }
+      const parsedAccount = JSON.parse(storedAccount);
+      if (parsedAccount?.cart && Array.isArray(parsedAccount.cart)) {
+        return parsedAccount.cart;
       }
       return [];
     } catch {
@@ -99,6 +98,8 @@ export function App() {
 
   const [wishlistIds, setWishlistIds] = useState<string[]>(() => {
     try {
+      const storedAccount = localStorage.getItem('shyam_customer_account');
+      if (!storedAccount) return [];
       const stored = localStorage.getItem('shyam_jewellery_wishlist');
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -106,12 +107,9 @@ export function App() {
           return parsed;
         }
       }
-      const storedAccount = localStorage.getItem('shyam_customer_account');
-      if (storedAccount) {
-        const parsed = JSON.parse(storedAccount);
-        if (parsed?.wishlist && Array.isArray(parsed.wishlist)) {
-          return parsed.wishlist;
-        }
+      const parsedAccount = JSON.parse(storedAccount);
+      if (parsedAccount?.wishlist && Array.isArray(parsedAccount.wishlist)) {
+        return parsedAccount.wishlist;
       }
       return [];
     } catch {
@@ -140,26 +138,42 @@ export function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Sync Customer Cart & Wishlist to localStorage and DB (Always preserve local storage so items never disappear)
+  // Sync Customer Cart & Wishlist to localStorage and DB (Only while user is signed in)
   useEffect(() => {
-    try {
-      localStorage.setItem('shyam_jewellery_cart', JSON.stringify(cartItems));
-    } catch {
-      // ignore
-    }
-    if (customerUser?.email) {
-      saveCustomerCartInDb(customerUser.email, cartItems);
+    if (customerUser) {
+      try {
+        localStorage.setItem('shyam_jewellery_cart', JSON.stringify(cartItems));
+      } catch {
+        // ignore
+      }
+      if (customerUser.email) {
+        saveCustomerCartInDb(customerUser.email, cartItems);
+      }
+    } else {
+      try {
+        localStorage.removeItem('shyam_jewellery_cart');
+      } catch {
+        // ignore
+      }
     }
   }, [cartItems, customerUser]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('shyam_jewellery_wishlist', JSON.stringify(wishlistIds));
-    } catch {
-      // ignore
-    }
-    if (customerUser?.email) {
-      saveCustomerWishlistInDb(customerUser.email, wishlistIds);
+    if (customerUser) {
+      try {
+        localStorage.setItem('shyam_jewellery_wishlist', JSON.stringify(wishlistIds));
+      } catch {
+        // ignore
+      }
+      if (customerUser.email) {
+        saveCustomerWishlistInDb(customerUser.email, wishlistIds);
+      }
+    } else {
+      try {
+        localStorage.removeItem('shyam_jewellery_wishlist');
+      } catch {
+        // ignore
+      }
     }
   }, [wishlistIds, customerUser]);
 
@@ -192,6 +206,39 @@ export function App() {
             const newFromDb = dbBookings.filter((b) => !existingRefs.has(b.ref));
             return [...newFromDb, ...prev];
           });
+        }
+
+        // 3. Sync: push local bookings that are missing from the DB.
+        //    Each ref is remembered in 'shyam_henna_synced_refs' after a
+        //    successful push, so rows deleted from the DB later will NOT be
+        //    re-pushed by the sync on future refreshes.
+        try {
+          const storedLocal = localStorage.getItem('shyam_henna_bookings');
+          if (storedLocal) {
+            const localList = JSON.parse(storedLocal);
+            if (Array.isArray(localList) && localList.length > 0) {
+              const dbRefs = new Set((dbBookings || []).map((b) => b.ref));
+              let syncedRefs = new Set<string>();
+              try {
+                const rawSynced = localStorage.getItem('shyam_henna_synced_refs');
+                if (rawSynced) syncedRefs = new Set(JSON.parse(rawSynced));
+              } catch {
+                // ignore parse errors
+              }
+              const missing = localList.filter(
+                (b: HennaBooking) => b.ref && !dbRefs.has(b.ref) && !syncedRefs.has(b.ref)
+              );
+              for (const b of missing) {
+                const res = await insertSupabaseBooking(b, { phone: b.phone, wa: b.wa });
+                if (res.success) syncedRefs.add(b.ref);
+              }
+              if (missing.length > 0) {
+                localStorage.setItem('shyam_henna_synced_refs', JSON.stringify(Array.from(syncedRefs)));
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Local bookings → DB sync failed:', e);
         }
 
         const dbJewellery = await fetchSupabaseJewellery();
@@ -272,6 +319,15 @@ export function App() {
   const handleLogoutCustomer = () => {
     logoutCustomerAccount();
     setCustomerUser(null);
+    setCartItems([]);
+    setWishlistIds([]);
+    try {
+      localStorage.removeItem('shyam_customer_account');
+      localStorage.removeItem('shyam_jewellery_cart');
+      localStorage.removeItem('shyam_jewellery_wishlist');
+    } catch {
+      // ignore
+    }
     setIsWishlistDrawerOpen(false);
     setIsCartDrawerOpen(false);
     setIsCartCheckoutOpen(false);
@@ -280,6 +336,15 @@ export function App() {
 
   // Cart Handlers
   const handleAddToCart = (product: Product, quantity = 1) => {
+    if (!customerUser) {
+      handleOpenAuthModal({
+        action: 'cart',
+        targetProduct: product,
+        targetView: currentView,
+      });
+      return;
+    }
+
     const maxStock = product.stock ?? 1;
     if (maxStock <= 0) return;
 
@@ -325,10 +390,26 @@ export function App() {
 
   const handleClearCart = () => {
     setCartItems([]);
+    // Persist immediately (synchronously) so the cart stays cleared even if
+    // the tab is closed before React flushes the effect-based sync.
+    try {
+      localStorage.setItem('shyam_jewellery_cart', '[]');
+    } catch {
+      // ignore
+    }
   };
 
   // Wishlist Handlers
   const handleToggleWishlist = (product: Product) => {
+    if (!customerUser) {
+      handleOpenAuthModal({
+        action: 'wishlist',
+        targetProduct: product,
+        targetView: currentView,
+      });
+      return;
+    }
+
     setWishlistIds((prev) => {
       if (prev.includes(product.id)) {
         return prev.filter((id) => id !== product.id);
@@ -450,34 +531,31 @@ export function App() {
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-[#fcf9f5] flex flex-col font-sans-body">
-      {/* Navigation Header */}
-      <Navigation
+    <div className="min-h-screen bg-[var(--sc-bg)] flex flex-col font-sans-body text-[var(--sc-text)]">
+       <Navigation
         currentView={currentView}
         onNavigate={handleNavigate}
         cartCount={totalCartCount}
         wishlistCount={wishlistIds.length}
         isAuthenticated={isAuthenticated}
         customerUser={customerUser}
-        onOpenAuthModal={() => handleOpenAuthModal()}
+        onOpenAuthModal={handleOpenAuthModal}
         onLogoutCustomer={handleLogoutCustomer}
         onOpenCart={() => setIsCartDrawerOpen(true)}
         onOpenWishlist={() => setIsWishlistDrawerOpen(true)}
       />
 
-      {/* Main Screen Views */}
       <div className="flex-1 relative">
-        {/* Floating Welcome Toast */}
         {loginWelcomeToast && (
           <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="bg-[#1c1c1a] border border-[#c79a3b] text-[#f3ebd9] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md">
-              <span className="material-symbols-outlined text-[#c79a3b] text-xl animate-bounce">
+            <div className="bg-[var(--sc-emerald-deep)] border border-[var(--sc-emerald-light)] text-[#f3ebd9] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md">
+              <span className="material-symbols-outlined text-[var(--sc-emerald-light)] text-xl animate-bounce">
                 verified_user
               </span>
               <span className="text-xs font-bold">{loginWelcomeToast}</span>
               <button
                 onClick={() => setLoginWelcomeToast(null)}
-                className="text-[#807665] hover:text-white ml-2 cursor-pointer"
+                className="text-[var(--sc-text-dimmer)] hover:text-white ml-2 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>
@@ -515,7 +593,6 @@ export function App() {
             onDecrementStock={handleDecrementStock}
             onOpenCart={() => setIsCartDrawerOpen(true)}
             onOpenWishlist={() => setIsWishlistDrawerOpen(true)}
-            onRefreshJewellery={handleRefreshJewellery}
           />
         )}
 
@@ -525,6 +602,7 @@ export function App() {
             onAddBooking={handleAddHennaBooking}
             initialCategory={selectedCategory}
             customerUser={customerUser}
+            onRequireAuth={handleOpenAuthModal}
           />
         )}
 
@@ -579,6 +657,8 @@ export function App() {
           setIsCartCheckoutOpen(true);
         }}
         onSelectProduct={handleSelectProduct}
+        isAuthenticated={isAuthenticated}
+        onOpenAuthModal={() => handleOpenAuthModal()}
       />
 
       {/* Wishlist Drawer */}
@@ -609,8 +689,14 @@ export function App() {
         onViewOrders={() => handleNavigate('my-bookings')}
       />
 
-      {/* Shared Footer (hidden on Admin view) */}
-      {currentView !== 'admin' && <Footer onNavigate={handleNavigate} />}
+       {/* Shared Footer (hidden on Admin view) */}
+      {currentView !== 'admin' && (
+        <Footer
+          onNavigate={handleNavigate}
+          isAuthenticated={isAuthenticated}
+          onRequireAuth={handleOpenAuthModal}
+        />
+      )}
     </div>
   );
 }

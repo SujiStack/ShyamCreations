@@ -48,18 +48,18 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
     >
       <div
         id="wishlist-drawer"
-        className="w-full max-w-md bg-[#fcf9f5] h-full shadow-2xl flex flex-col justify-between animate-in slide-from-right duration-300 text-[#1c1c1a]"
+        className="w-full max-w-md bg-[var(--sc-bg-soft)] h-full shadow-2xl flex flex-col justify-between animate-in slide-from-right duration-300 text-[var(--sc-text)]"
       >
         {/* Header */}
-        <div className="p-5 border-b border-[#d2c5b1]/40 bg-white">
+        <div className="p-5 border-b border-[var(--sc-border)]/40 bg-[var(--sc-surface)]">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#c79a3b] text-2xl">favorite</span>
+              <span className="material-symbols-outlined text-[var(--sc-emerald-light)] text-2xl">favorite</span>
               <div>
-                <h3 className="font-serif text-xl font-bold text-[#1c1c1a]">
+                <h3 className="font-serif text-xl font-bold text-[var(--sc-text)]">
                   My Jewellery Wishlist
                 </h3>
-                <p className="text-[11px] text-[#807665]">
+                <p className="text-[11px] text-[var(--sc-text-dimmer)]">
                   {wishlistProducts.length} {wishlistProducts.length === 1 ? 'piece' : 'pieces'} saved
                 </p>
               </div>
@@ -67,7 +67,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
             <button
               id="btn-close-wishlist-drawer"
               onClick={onClose}
-              className="p-1.5 hover:bg-[#e5e2de] rounded-full text-[#4e4637] transition-colors cursor-pointer"
+              className="p-1.5 hover:bg-[var(--sc-accent-warm)] rounded-full text-[var(--sc-text-dim)] transition-colors cursor-pointer"
             >
               <span className="material-symbols-outlined">close</span>
             </button>
@@ -83,7 +83,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
             ) : (
               <div className="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50/80 border border-amber-200/70 rounded-xl text-[11px] text-amber-900">
                 <div className="flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm text-[#c79a3b]">lock_clock</span>
+                  <span className="material-symbols-outlined text-sm text-[var(--sc-emerald-light)]">lock_clock</span>
                   <span>Sign in to store wishlist in your account</span>
                 </div>
                 {onOpenAuthModal && (
@@ -92,7 +92,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                       onClose();
                       onOpenAuthModal();
                     }}
-                    className="font-bold underline text-[#7b5900] hover:text-[#926a00] cursor-pointer whitespace-nowrap"
+                    className="font-bold underline text-[var(--sc-emerald-dark)] hover:text-[#8C5F20] cursor-pointer whitespace-nowrap"
                   >
                     Sign In
                   </button>
@@ -103,13 +103,13 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
 
           {/* Availability Filter Chips (if more than 1 product) */}
           {wishlistProducts.length > 0 && (
-            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-[#d2c5b1]/30">
+            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-[var(--sc-border)]/30">
               <button
                 onClick={() => setFilterAvailability('all')}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                   filterAvailability === 'all'
-                    ? 'bg-[#7b5900] text-white'
-                    : 'bg-[#f6f3ef] text-[#5c5446] hover:bg-[#ebdcc9]'
+                    ? 'bg-[var(--sc-emerald)] text-white'
+                    : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] hover:bg-[var(--sc-accent-warm)]'
                 }`}
               >
                 All ({wishlistProducts.length})
@@ -119,7 +119,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
                   filterAvailability === 'available'
                     ? 'bg-emerald-700 text-white'
-                    : 'bg-[#f6f3ef] text-emerald-800 hover:bg-emerald-100/60'
+                    : 'bg-[var(--sc-accent-warm)] text-emerald-800 hover:bg-emerald-100/60'
                 }`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
@@ -131,7 +131,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
                     filterAvailability === 'out_of_stock'
                       ? 'bg-rose-700 text-white'
-                      : 'bg-[#f6f3ef] text-rose-800 hover:bg-rose-100/60'
+                      : 'bg-[var(--sc-accent-warm)] text-rose-800 hover:bg-rose-100/60'
                   }`}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
@@ -146,11 +146,11 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
         <div className="flex-1 overflow-y-auto p-5 space-y-3.5">
           {wishlistProducts.length === 0 ? (
             <div className="text-center py-16 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-[#f6f3ef] border border-[#d2c5b1]/40 text-[#c79a3b] flex items-center justify-center mx-auto">
+              <div className="w-16 h-16 rounded-full bg-[var(--sc-accent-warm)] border border-[var(--sc-border)]/40 text-[var(--sc-emerald-light)] flex items-center justify-center mx-auto">
                 <span className="material-symbols-outlined text-3xl">favorite_border</span>
               </div>
-              <h4 className="font-serif text-lg font-bold text-[#1c1c1a]">Your wishlist is empty</h4>
-              <p className="text-xs text-[#5c5446] max-w-xs mx-auto">
+              <h4 className="font-serif text-lg font-bold text-[var(--sc-text)]">Your wishlist is empty</h4>
+              <p className="text-xs text-[var(--sc-text-dim)] max-w-xs mx-auto">
                 {isAuthenticated
                   ? 'Click the heart icon on any jewellery piece to save it to your personal wishlist for quick access.'
                   : 'Sign in to your client account to save and access your favourite jewellery pieces across all your devices.'}
@@ -161,7 +161,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                     onClose();
                     onOpenAuthModal();
                   }}
-                  className="px-5 py-2.5 bg-[#7b5900] hover:bg-[#c79a3b] text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 mx-auto cursor-pointer"
+                  className="px-5 py-2.5 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald-light)] text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 mx-auto cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">lock_open</span>
                   <span>Sign In / Register</span>
@@ -169,11 +169,11 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
               )}
             </div>
           ) : displayedProducts.length === 0 ? (
-            <div className="text-center py-12 text-[#807665]">
+            <div className="text-center py-12 text-[var(--sc-text-dimmer)]">
               <p className="text-xs">No items match the selected availability filter.</p>
               <button
                 onClick={() => setFilterAvailability('all')}
-                className="mt-2 text-xs font-bold text-[#7b5900] underline cursor-pointer"
+                className="mt-2 text-xs font-bold text-[var(--sc-emerald-dark)] underline cursor-pointer"
               >
                 Show all items
               </button>
@@ -187,7 +187,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
               return (
                 <div
                   key={product.id}
-                  className="p-3.5 bg-white border border-[#d2c5b1]/40 rounded-2xl shadow-xs flex gap-3.5 relative group hover:border-[#c79a3b]/60 transition-all"
+                  className="p-3.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/40 rounded-2xl shadow-xs flex gap-3.5 relative group hover:border-[var(--sc-emerald)]/60 transition-all"
                 >
                   {/* Image with quick preview */}
                   <div
@@ -197,7 +197,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                         onClose();
                       }
                     }}
-                    className="w-22 h-22 rounded-xl bg-[#f6f3ef] border border-[#e8dfd1] overflow-hidden shrink-0 cursor-pointer relative"
+                    className="w-22 h-22 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] overflow-hidden shrink-0 cursor-pointer relative"
                   >
                     <img
                       src={product.images[0]}
@@ -221,14 +221,14 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                               onClose();
                             }
                           }}
-                          className="font-serif text-sm font-bold text-[#1c1c1a] hover:text-[#7b5900] cursor-pointer truncate"
+                          className="font-serif text-sm font-bold text-[var(--sc-text)] hover:text-[var(--sc-emerald-dark)] cursor-pointer truncate"
                           title={product.name}
                         >
                           {product.name}
                         </h4>
                         <button
                           onClick={() => onRemoveFromWishlist(product.id)}
-                          className="text-[#807665] hover:text-red-600 transition-colors p-1 cursor-pointer shrink-0"
+                          className="text-[var(--sc-text-dimmer)] hover:text-red-600 transition-colors p-1 cursor-pointer shrink-0"
                           title="Remove from wishlist"
                         >
                           <span className="material-symbols-outlined text-sm">delete</span>
@@ -236,7 +236,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                       </div>
 
                       {/* Price */}
-                      <p className="text-xs font-bold text-[#7b5900] mt-0.5">
+                      <p className="text-xs font-bold text-[var(--sc-emerald-dark)] mt-0.5">
                         {product.type === 'Rental'
                           ? `${product.rentalPriceDay} • Rental`
                           : product.price}
@@ -266,7 +266,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                     </div>
 
                     {/* Actions */}
-                    <div className="pt-2 flex items-center justify-between gap-2 border-t border-[#d2c5b1]/20 mt-2">
+                    <div className="pt-2 flex items-center justify-between gap-2 border-t border-[var(--sc-border)]/20 mt-2">
                       <button
                         onClick={() => {
                           if (onSelectProduct) {
@@ -274,7 +274,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                             onClose();
                           }
                         }}
-                        className="text-[11px] font-semibold text-[#5c5446] hover:text-[#7b5900] cursor-pointer"
+                        className="text-[11px] font-semibold text-[var(--sc-text-dim)] hover:text-[var(--sc-emerald-dark)] cursor-pointer"
                       >
                         View Details
                       </button>
@@ -282,7 +282,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                       <button
                         onClick={() => onAddToCart(product)}
                         disabled={!inStock}
-                        className="px-3 py-1.5 bg-[#7b5900] hover:bg-[#926a00] text-white text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+                        className="px-3 py-1.5 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald)] text-white text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                       >
                         <span className="material-symbols-outlined text-xs">
                           {inStock ? 'add_shopping_cart' : 'block'}
@@ -299,18 +299,18 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
 
         {/* Footer */}
         {wishlistProducts.length > 0 && (
-          <div className="p-4 bg-white border-t border-[#d2c5b1]/40 space-y-2.5">
+          <div className="p-4 bg-[var(--sc-surface)] border-t border-[var(--sc-border)]/40 space-y-2.5">
             {inStockCount > 0 && (
               <button
                 onClick={handleAddAllAvailable}
-                className="w-full py-2.5 bg-[#7b5900] hover:bg-[#926a00] text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-2.5 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald)] text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-base">shopping_bag</span>
                 <span>Add All Available to Bag ({inStockCount})</span>
               </button>
             )}
 
-            <p className="text-[11px] text-[#807665] text-center">
+            <p className="text-[11px] text-[var(--sc-text-dimmer)] text-center">
               {inStockCount} of {wishlistProducts.length} items available in stock
             </p>
           </div>

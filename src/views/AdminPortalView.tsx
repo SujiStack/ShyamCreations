@@ -519,36 +519,36 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   // RENDER ADMIN LOGIN SCREEN IF NOT AUTHENTICATED
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#1c1c1a] text-[#ded8ce] flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-screen bg-[var(--sc-surface-alt)] text-[#ded8ce] flex items-center justify-center p-4 relative overflow-hidden">
         {/* Subtle Luxury Glow Effects */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#c79a3b]/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-[#7b5900]/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#E0B45F]/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-[#C08A34]/15 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="w-full max-w-md bg-[#252522] border border-[#c79a3b]/30 rounded-3xl p-8 space-y-6 shadow-2xl relative z-10">
+        <div className="w-full max-w-md bg-[var(--sc-surface-alt-card)] border border-[#E0B45F]/30 rounded-3xl p-8 space-y-6 shadow-2xl relative z-10">
           {/* Header */}
           <div className="text-center space-y-2">
             <button
               onClick={() => onNavigate('home')}
-              className="text-xs font-bold uppercase tracking-widest text-[#c79a3b] hover:underline inline-flex items-center gap-1 mb-2"
+              className="text-xs font-bold uppercase tracking-widest text-[#E0B45F] hover:underline inline-flex items-center gap-1 mb-2"
             >
               <span className="material-symbols-outlined text-sm">arrow_back</span>
               <span>Back to Main Store</span>
             </button>
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#c79a3b] to-[#7b5900] text-[#1c1c1a] font-serif font-black text-2xl flex items-center justify-center shadow-lg">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#E0B45F] to-[#C08A34] text-[var(--sc-surface-alt)] font-serif font-black text-2xl flex items-center justify-center shadow-lg">
               S
             </div>
             <h1 className="font-serif text-2xl font-bold text-white tracking-tight pt-1">
               Shyam Admin Portal
             </h1>
-            <p className="text-xs text-[#807665]">
+            <p className="text-xs text-[#8A7F72]">
               Supabase Authenticated Management & Tracking
             </p>
           </div>
 
           {/* Connection Badge & Config Button */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between bg-[#1c1c1a] p-3 rounded-xl border border-[#3d3d38] text-xs">
-              <span className="text-[#807665] font-semibold">Supabase Backend:</span>
+            <div className="flex items-center justify-between bg-[var(--sc-surface-alt)] p-3 rounded-xl border border-[var(--sc-border-dark)] text-xs">
+              <span className="text-[#8A7F72] font-semibold">Supabase Backend:</span>
               {isSupabaseConfigured() ? (
                 <span className="text-emerald-400 font-bold flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -565,7 +565,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             <button
               type="button"
               onClick={handleOpenConfigModal}
-              className="w-full py-2 px-3 bg-[#1c1c1a] hover:bg-[#252522] border border-[#c79a3b]/40 text-[#c79a3b] hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+              className="w-full py-2 px-3 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-surface-alt-card)] border border-[#E0B45F]/40 text-[#E0B45F] hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
             >
               <span className="material-symbols-outlined text-sm">settings_ethernet</span>
               <span>Supabase Connection & Diagnostics</span>
@@ -594,11 +594,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           {/* Login Form */}
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-[#807665]">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#8A7F72]">
                 Admin Email / Username
               </label>
               <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-3 text-[#807665] text-base">
+                <span className="material-symbols-outlined absolute left-3 top-3 text-[#8A7F72] text-base">
                   mail
                 </span>
                 <input
@@ -607,17 +607,17 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   placeholder="admin@shyamcreations.com"
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#1c1c1a] border border-[#3d3d38] rounded-xl text-xs text-white placeholder-[#807665] focus:outline-none focus:border-[#c79a3b]"
+                  className="w-full pl-10 pr-4 py-2.5 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-[#807665]">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#8A7F72]">
                 Password
               </label>
               <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-3 text-[#807665] text-base">
+                <span className="material-symbols-outlined absolute left-3 top-3 text-[#8A7F72] text-base">
                   lock
                 </span>
                 <input
@@ -626,7 +626,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#1c1c1a] border border-[#3d3d38] rounded-xl text-xs text-white placeholder-[#807665] focus:outline-none focus:border-[#c79a3b]"
+                  className="w-full pl-10 pr-4 py-2.5 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
                 />
               </div>
             </div>
@@ -634,11 +634,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             <button
               type="submit"
               disabled={isLoggingIn}
-              className="w-full py-3 bg-[#c79a3b] hover:bg-white text-[#1c1c1a] font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3 bg-[#E0B45F] hover:bg-[#D4A24C] text-[var(--sc-surface-alt)] font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
             >
               {isLoggingIn ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-[#1c1c1a] border-t-transparent rounded-full animate-spin" />
+                  <span className="w-4 h-4 border-2 border-[var(--sc-surface-alt)] border-t-transparent rounded-full animate-spin" />
                   <span>Authenticating...</span>
                 </>
               ) : (
@@ -651,8 +651,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           </form>
 
           {/* Supabase authentication notice */}
-          <div className="text-[11px] text-[#807665] bg-[#1c1c1a] p-3 rounded-xl border border-[#3d3d38] space-y-1">
-            <p className="font-bold text-[#c79a3b] flex items-center gap-1">
+          <div className="text-[11px] text-[#8A7F72] bg-[var(--sc-surface-alt)] p-3 rounded-xl border border-[var(--sc-border-dark)] space-y-1">
+            <p className="font-bold text-[#E0B45F] flex items-center gap-1">
               <span className="material-symbols-outlined text-xs">verified_user</span>
               <span>Supabase Admin Login:</span>
             </p>
@@ -667,15 +667,15 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
 
   return (
-    <div className="min-h-screen bg-[#1c1c1a] text-[#ded8ce] flex flex-col lg:flex-row">
+    <div className="min-h-screen bg-[var(--sc-surface-alt)] text-[#ded8ce] flex flex-col lg:flex-row">
       {/* Sidebar Navigation */}
-      <aside className="w-full lg:w-72 bg-[#121211] border-r border-[#c79a3b]/20 p-6 flex flex-col justify-between shrink-0">
+      <aside className="w-full lg:w-72 bg-[#14110E] border-r border-[#E0B45F]/20 p-6 flex flex-col justify-between shrink-0">
         <div className="space-y-8">
           {/* Admin Header */}
           <div className="space-y-1">
             <button
               onClick={() => onNavigate('home')}
-              className="text-xs font-bold uppercase tracking-widest text-[#c79a3b] hover:underline flex items-center gap-1"
+              className="text-xs font-bold uppercase tracking-widest text-[#E0B45F] hover:underline flex items-center gap-1"
             >
               <span className="material-symbols-outlined text-sm">arrow_back</span>
               <span>Back to Public Store</span>
@@ -683,7 +683,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             <h2 className="font-serif text-2xl font-bold text-white tracking-tight pt-2">
               Shyam Admin
             </h2>
-            <p className="text-[10px] text-[#807665] uppercase tracking-widest font-bold">
+            <p className="text-[10px] text-[#8A7F72] uppercase tracking-widest font-bold">
               Jewellery & Henna Portal
             </p>
           </div>
@@ -697,8 +697,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               }}
               className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${
                 adminSection === 'INVENTORY'
-                  ? 'bg-[#c79a3b] text-[#1c1c1a] font-bold shadow'
-                  : 'hover:bg-[#252522] text-[#ded8ce]'
+                  ? 'bg-[#E0B45F] text-[var(--sc-surface-alt)] font-bold shadow'
+                  : 'hover:bg-[var(--sc-surface-alt-card)] text-[#ded8ce]'
               }`}
             >
               <span className="material-symbols-outlined text-base">diamond</span>
@@ -709,15 +709,15 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               onClick={() => setAdminSection('HENNA')}
               className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-colors ${
                 adminSection === 'HENNA'
-                  ? 'bg-[#2d063d] text-white font-bold shadow'
-                  : 'hover:bg-[#252522] text-[#ded8ce]'
+                  ? 'bg-[#8C5F20] text-white font-bold shadow'
+                  : 'hover:bg-[var(--sc-surface-alt-card)] text-[#ded8ce]'
               }`}
             >
               <span className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-base">brush</span>
                 <span>Henna Bookings</span>
               </span>
-              <span className="px-2 py-0.5 bg-[#e2bd70]/20 text-[#e2bd70] rounded-full text-[10px]">
+              <span className="px-2 py-0.5 bg-[#D4A24C]/20 text-[#D4A24C] rounded-full text-[10px]">
                 {dbHennaBookings.length}
               </span>
             </button>
@@ -726,8 +726,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               onClick={() => setAdminSection('RENTALS')}
               className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-colors ${
                 adminSection === 'RENTALS'
-                  ? 'bg-[#7b5900] text-white font-bold shadow'
-                  : 'hover:bg-[#252522] text-[#ded8ce]'
+                  ? 'bg-[#C08A34] text-white font-bold shadow'
+                  : 'hover:bg-[var(--sc-surface-alt-card)] text-[#ded8ce]'
               }`}
             >
               <span className="flex items-center gap-3">
@@ -743,15 +743,15 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               onClick={() => setAdminSection('CUSTOMERS')}
               className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-colors ${
                 adminSection === 'CUSTOMERS'
-                  ? 'bg-[#0f5257] text-white font-bold shadow'
-                  : 'hover:bg-[#252522] text-[#ded8ce]'
+                  ? 'bg-[#8C5F20] text-white font-bold shadow'
+                  : 'hover:bg-[var(--sc-surface-alt-card)] text-[#ded8ce]'
               }`}
             >
               <span className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-base">badge</span>
                 <span>Jewellery Customers</span>
               </span>
-              <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full text-[10px] font-bold">
+              <span className="px-2 py-0.5 bg-[#C08A34]/20 text-[#E0B45F] rounded-full text-[10px] font-bold">
                 {customersList.length}
               </span>
             </button>
@@ -760,21 +760,21 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               onClick={() => setAdminSection('JEWELLERY_BOOKINGS')}
               className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-colors ${
                 adminSection === 'JEWELLERY_BOOKINGS'
-                  ? 'bg-[#1e3a8a] text-white font-bold shadow'
-                  : 'hover:bg-[#252522] text-[#ded8ce]'
+                  ? 'bg-[#8C5F20] text-white font-bold shadow'
+                  : 'hover:bg-[var(--sc-surface-alt-card)] text-[#ded8ce]'
               }`}
             >
               <span className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-base">book_online</span>
                 <span>Jewellery Bookings</span>
               </span>
-              <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full text-[10px] font-bold">
+              <span className="px-2 py-0.5 bg-[#C08A34]/20 text-[#E0B45F] rounded-full text-[10px] font-bold">
                 {jewelleryBookingsList.length}
               </span>
             </button>
             <button
               onClick={() => alert('WhatsApp Concierge messages synced: +91 93637 10342.')}
-              className="w-full text-left px-4 py-3 rounded-xl hover:bg-[#252522] text-[#ded8ce] flex items-center gap-3 transition-colors"
+              className="w-full text-left px-4 py-3 rounded-xl hover:bg-[var(--sc-surface-alt-card)] text-[#ded8ce] flex items-center gap-3 transition-colors"
             >
               <span className="material-symbols-outlined text-base">chat</span>
               <span>Client Concierge</span>
@@ -782,7 +782,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
             <button
               onClick={handleOpenConfigModal}
-              className="w-full text-left px-4 py-3 rounded-xl hover:bg-[#252522] text-[#c79a3b] border border-[#c79a3b]/30 flex items-center justify-between transition-colors mt-2 cursor-pointer"
+              className="w-full text-left px-4 py-3 rounded-xl hover:bg-[var(--sc-surface-alt-card)] text-[#E0B45F] border border-[#E0B45F]/30 flex items-center justify-between transition-colors mt-2 cursor-pointer"
             >
               <span className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-base">settings_ethernet</span>
@@ -794,16 +794,16 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
 
         {/* Super Administrator Avatar & Logout */}
-        <div className="pt-6 border-t border-[#252522] flex items-center justify-between">
+        <div className="pt-6 border-t border-[var(--sc-surface-alt-card)] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#c79a3b] text-[#1c1c1a] font-bold flex items-center justify-center text-sm">
+            <div className="w-10 h-10 rounded-full bg-[#E0B45F] text-[var(--sc-surface-alt)] font-bold flex items-center justify-center text-sm">
               S
             </div>
             <div>
               <p className="font-serif font-bold text-xs text-white">
                 {adminUser?.email || 'Shyam Admin'}
               </p>
-              <p className="text-[10px] text-[#807665]">Super Administrator</p>
+              <p className="text-[10px] text-[#8A7F72]">Super Administrator</p>
             </div>
           </div>
           <button
@@ -845,7 +845,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             </div>
             <button
               onClick={handleOpenConfigModal}
-              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-[#1c1c1a] font-bold text-xs rounded-xl shadow shrink-0 cursor-pointer"
+              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-[var(--sc-surface-alt)] font-bold text-xs rounded-xl shadow shrink-0 cursor-pointer"
             >
               Configure Live Database
             </button>
@@ -853,10 +853,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         )}
 
         {/* Top Header Bar */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#252522] pb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[var(--sc-surface-alt-card)] pb-6">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
             <div className="relative w-full sm:w-80">
-              <span className="material-symbols-outlined absolute left-3 top-3 text-[#807665] text-lg">
+              <span className="material-symbols-outlined absolute left-3 top-3 text-[#8A7F72] text-lg">
                 search
               </span>
               <input
@@ -870,14 +870,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-[#252522] border border-[#3d3d38] rounded-xl text-xs text-white placeholder-[#807665] focus:outline-none focus:border-[#c79a3b]"
+                className="w-full pl-10 pr-4 py-2.5 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
               />
             </div>
 
             <button
               onClick={loadAllDatabaseData}
               disabled={isRefreshingAll}
-              className="px-4 py-2.5 bg-[#252522] hover:bg-[#3d3d38] border border-[#c79a3b]/40 text-[#c79a3b] hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-md"
+              className="px-4 py-2.5 bg-[var(--sc-surface-alt-card)] hover:bg-[var(--sc-border-dark)] border border-[#E0B45F]/40 text-[#E0B45F] hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-md"
               title="Fetch fresh data from Supabase database"
             >
               <span className={`material-symbols-outlined text-sm ${isRefreshingAll ? 'animate-spin' : ''}`}>
@@ -890,7 +890,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           {adminSection === 'INVENTORY' && (
             <button
               onClick={handleOpenAddModal}
-              className="btn-royal px-6 py-3 bg-[#c79a3b] text-[#1c1c1a] font-bold rounded-xl hover:bg-white transition-all flex items-center gap-2 shadow-lg"
+              className="btn-royal px-6 py-3 bg-[#E0B45F] text-[var(--sc-surface-alt)] font-bold rounded-xl hover:bg-[#D4A24C] transition-all flex items-center gap-2 shadow-lg"
             >
               <span className="material-symbols-outlined text-base">add</span>
               <span>ADD PRODUCT</span>
@@ -900,7 +900,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           {adminSection === 'HENNA' && (
             <button
               onClick={() => onNavigate('henna-booking')}
-              className="btn-royal px-6 py-3 bg-[#e2bd70] text-[#2d063d] font-bold rounded-xl hover:bg-white transition-all flex items-center gap-2 shadow-lg"
+              className="btn-royal px-6 py-3 bg-[#D4A24C] text-[#2B231A] font-bold rounded-xl hover:bg-[#E0B45F] transition-all flex items-center gap-2 shadow-lg"
             >
               <span className="material-symbols-outlined text-base">add</span>
               <span>CREATE HENNA BOOKING</span>
@@ -910,59 +910,59 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
         {/* Executive Stat Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-[#252522] p-6 rounded-2xl border border-[#3d3d38] space-y-2">
-            <div className="flex justify-between items-center text-[#807665]">
+          <div className="bg-[var(--sc-surface-alt-card)] p-6 rounded-2xl border border-[var(--sc-border-dark)] space-y-2">
+            <div className="flex justify-between items-center text-[#8A7F72]">
               <span className="text-xs uppercase font-bold tracking-wider">
                 Active Henna Bookings
               </span>
-              <span className="material-symbols-outlined text-[#c79a3b]">brush</span>
+              <span className="material-symbols-outlined text-[#E0B45F]">brush</span>
             </div>
             <p className="font-serif text-3xl font-bold text-white">
               {dbHennaBookings.length} Bookings
             </p>
-            <p className="text-[11px] text-[#42a85f] font-semibold flex items-center gap-1">
+            <p className="text-[11px] text-[#5F9E7D] font-semibold flex items-center gap-1">
               <span>Live client appointments</span>
             </p>
           </div>
 
-          <div className="bg-[#252522] p-6 rounded-2xl border border-[#3d3d38] space-y-2">
-            <div className="flex justify-between items-center text-[#807665]">
+          <div className="bg-[var(--sc-surface-alt-card)] p-6 rounded-2xl border border-[var(--sc-border-dark)] space-y-2">
+            <div className="flex justify-between items-center text-[#8A7F72]">
               <span className="text-xs uppercase font-bold tracking-wider">
                 Active Rentals
               </span>
-              <span className="material-symbols-outlined text-[#c79a3b]">inventory_2</span>
+              <span className="material-symbols-outlined text-[#E0B45F]">inventory_2</span>
             </div>
             <p className="font-serif text-3xl font-bold text-white">
               {jewelleryRentals.length} Rentals
             </p>
-            <p className="text-[11px] text-[#e2bd70]">Insured jewellery shipments</p>
+            <p className="text-[11px] text-[#D4A24C]">Insured jewellery shipments</p>
           </div>
 
-          <div className="bg-[#252522] p-6 rounded-2xl border border-[#3d3d38] space-y-2">
-            <div className="flex justify-between items-center text-[#807665]">
+          <div className="bg-[var(--sc-surface-alt-card)] p-6 rounded-2xl border border-[var(--sc-border-dark)] space-y-2">
+            <div className="flex justify-between items-center text-[#8A7F72]">
               <span className="text-xs uppercase font-bold tracking-wider">
                 Total Inventory
               </span>
-              <span className="material-symbols-outlined text-[#c79a3b]">diamond</span>
+              <span className="material-symbols-outlined text-[#E0B45F]">diamond</span>
             </div>
             <p className="font-serif text-3xl font-bold text-white">
               {dbProducts.length} Products
             </p>
-            <p className="text-[11px] text-[#42a85f]">Catalogue items online</p>
+            <p className="text-[11px] text-[#5F9E7D]">Catalogue items online</p>
           </div>
         </div>
 
         {/* SECTION 1: Jewellery Product Management */}
         {adminSection === 'INVENTORY' && (
-          <div className="bg-[#252522] rounded-2xl border border-[#3d3d38] overflow-hidden">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-2xl border border-[var(--sc-border-dark)] overflow-hidden">
             {/* Filter Bar */}
-            <div className="p-6 border-b border-[#3d3d38] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="p-6 border-b border-[var(--sc-border-dark)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <h3 className="font-serif text-xl font-bold text-white flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[#c79a3b]">diamond</span>
+                  <span className="material-symbols-outlined text-[#E0B45F]">diamond</span>
                   <span>Jewellery Catalogue & Inventory</span>
                 </h3>
-                <p className="text-xs text-[#807665] mt-0.5">
+                <p className="text-xs text-[#8A7F72] mt-0.5">
                   Synchronized with Supabase `jewellery` and `products` tables ({filteredProducts.length} items)
                 </p>
               </div>
@@ -971,7 +971,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 <button
                   type="button"
                   onClick={handleOpenConfigModal}
-                  className="px-3.5 py-1.5 bg-[#1c1c1a] hover:bg-[#3d3d38] text-[#c79a3b] border border-[#c79a3b]/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
+                  className="px-3.5 py-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] text-[#E0B45F] border border-[#E0B45F]/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
                   title="Configure Supabase Database & Run Diagnostics"
                 >
                   <span className="material-symbols-outlined text-sm">settings</span>
@@ -981,7 +981,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowJewellerySqlModal(true)}
-                  className="px-3.5 py-1.5 bg-[#1c1c1a] hover:bg-[#3d3d38] text-[#c79a3b] border border-[#c79a3b]/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
+                  className="px-3.5 py-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] text-[#E0B45F] border border-[#E0B45F]/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
                   title="View PostgreSQL DDL Schema for jewellery table"
                 >
                   <span className="material-symbols-outlined text-sm">code</span>
@@ -1012,7 +1012,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     }
                   }}
                   disabled={isRefreshingAll}
-                  className="px-3.5 py-1.5 bg-[#c79a3b] hover:bg-[#7b5900] text-[#1c1c1a] font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-1.5 bg-[#E0B45F] hover:bg-[#C08A34] text-[var(--sc-surface-alt)] font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow cursor-pointer disabled:opacity-50"
                 >
                   <span className={`material-symbols-outlined text-sm ${isRefreshingAll ? 'animate-spin' : ''}`}>
                     sync
@@ -1020,15 +1020,15 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   <span>{isRefreshingAll ? 'Fetching...' : 'Fetch Supabase'}</span>
                 </button>
 
-                <div className="flex gap-1 bg-[#1c1c1a] p-1 rounded-xl border border-[#3d3d38]">
+                <div className="flex gap-1 bg-[var(--sc-surface-alt)] p-1 rounded-xl border border-[var(--sc-border-dark)]">
                   {(['ALL', 'SALE', 'RENTAL'] as const).map((mode) => (
                     <button
                       key={mode}
                       onClick={() => setFilterType(mode)}
                       className={`px-3 py-1 rounded-lg text-xs font-bold tracking-wider uppercase transition-all ${
                         filterType === mode
-                          ? 'bg-[#c79a3b] text-[#1c1c1a]'
-                          : 'text-[#807665] hover:text-white'
+                          ? 'bg-[#E0B45F] text-[var(--sc-surface-alt)]'
+                          : 'text-[#8A7F72] hover:text-white'
                       }`}
                     >
                       {mode}
@@ -1041,7 +1041,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             {/* Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#1c1c1a] text-[#807665] uppercase tracking-wider font-bold border-b border-[#3d3d38]">
+                <thead className="bg-[var(--sc-surface-alt)] text-[#8A7F72] uppercase tracking-wider font-bold border-b border-[var(--sc-border-dark)]">
                   <tr>
                     <th className="p-4">Product Name & Item</th>
                     <th className="p-4">Category</th>
@@ -1051,20 +1051,20 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     <th className="p-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#3d3d38]">
+                <tbody className="divide-y divide-[var(--sc-border-dark)]">
                   {filteredProducts.map((prod) => (
-                    <tr key={prod.id} className="hover:bg-[#2d2d2a] transition-colors">
+                    <tr key={prod.id} className="hover:bg-[#262b28] transition-colors">
                       <td className="p-4 flex items-center gap-3">
                         <img
                           src={prod.images[0]}
                           alt={prod.name}
-                          className="w-12 h-12 rounded-lg object-cover border border-[#3d3d38]"
+                          className="w-12 h-12 rounded-lg object-cover border border-[var(--sc-border-dark)]"
                         />
                         <div>
                           <p className="font-serif font-bold text-sm text-white">
                             {prod.name}
                           </p>
-                          <p className="text-[10px] text-[#807665] font-mono">
+                          <p className="text-[10px] text-[#8A7F72] font-mono">
                             ID: {prod.id}
                           </p>
                         </div>
@@ -1074,7 +1074,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         <span
                           className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                             prod.type === 'Rental'
-                              ? 'bg-[#c79a3b]/20 text-[#c79a3b]'
+                              ? 'bg-[#E0B45F]/20 text-[#E0B45F]'
                               : 'bg-emerald-500/20 text-emerald-400'
                           }`}
                         >
@@ -1085,7 +1085,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         {prod.type === 'Rental' ? prod.rentalPriceDay : prod.price}
                       </td>
                       <td className="p-4">
-                        <span className="px-2.5 py-1 bg-[#1c1c1a] text-[#ded8ce] border border-[#3d3d38] rounded-full text-[10px] font-semibold">
+                        <span className="px-2.5 py-1 bg-[var(--sc-surface-alt)] text-[#ded8ce] border border-[var(--sc-border-dark)] rounded-full text-[10px] font-semibold">
                           {prod.stockLabel}
                         </span>
                       </td>
@@ -1094,14 +1094,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           onClick={() => {
                             if (onSelectProduct) onSelectProduct(prod);
                           }}
-                          className="p-2 hover:bg-[#3d3d38] rounded-lg text-emerald-400 transition-colors"
+                          className="p-2 hover:bg-[var(--sc-border-dark)] rounded-lg text-emerald-400 transition-colors"
                           title="Preview Item Page"
                         >
                           <span className="material-symbols-outlined text-base">visibility</span>
                         </button>
                         <button
                           onClick={() => handleOpenEditModal(prod)}
-                          className="p-2 hover:bg-[#3d3d38] rounded-lg text-[#c79a3b] transition-colors"
+                          className="p-2 hover:bg-[var(--sc-border-dark)] rounded-lg text-[#E0B45F] transition-colors"
                           title="Edit Item"
                         >
                           <span className="material-symbols-outlined text-base">edit</span>
@@ -1112,7 +1112,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                               handleDeleteProductWithSupa(prod.id);
                             }
                           }}
-                          className="p-2 hover:bg-[#3d3d38] rounded-lg text-red-400 transition-colors"
+                          className="p-2 hover:bg-[var(--sc-border-dark)] rounded-lg text-red-400 transition-colors"
                           title="Delete Item"
                         >
                           <span className="material-symbols-outlined text-base">delete</span>
@@ -1128,20 +1128,20 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
         {/* SECTION 2: Henna Bookings Admin Table */}
         {adminSection === 'HENNA' && (
-          <div className="bg-[#252522] rounded-2xl border border-[#3d3d38] overflow-hidden space-y-4 p-6">
-            <div className="flex justify-between items-center border-b border-[#3d3d38] pb-4">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-2xl border border-[var(--sc-border-dark)] overflow-hidden space-y-4 p-6">
+            <div className="flex justify-between items-center border-b border-[var(--sc-border-dark)] pb-4">
               <h3 className="font-serif text-xl font-bold text-white flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#e2bd70]">brush</span>
+                <span className="material-symbols-outlined text-[#D4A24C]">brush</span>
                 <span>HennaBliss Appointments Management</span>
               </h3>
-              <span className="text-xs text-[#807665]">
+              <span className="text-xs text-[#8A7F72]">
                 Total Bookings: {filteredHennaBookings.length}
               </span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#1c1c1a] text-[#807665] uppercase tracking-wider font-bold border-b border-[#3d3d38]">
+                <thead className="bg-[var(--sc-surface-alt)] text-[#8A7F72] uppercase tracking-wider font-bold border-b border-[var(--sc-border-dark)]">
                   <tr>
                     <th className="p-4">Client & Ref</th>
                     <th className="p-4">Package / Service</th>
@@ -1152,25 +1152,25 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     <th className="p-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#3d3d38]">
+                <tbody className="divide-y divide-[var(--sc-border-dark)]">
                   {filteredHennaBookings.map((booking) => (
-                    <tr key={booking.id} className="hover:bg-[#2d2d2a] transition-colors">
+                    <tr key={booking.id} className="hover:bg-[#262b28] transition-colors">
                       <td className="p-4">
                         <p className="font-bold text-white">{booking.clientName}</p>
-                        <p className="text-[10px] text-[#807665]">{booking.clientEmail}</p>
-                        <p className="text-[10px] font-mono text-[#e2bd70]">#{booking.ref}</p>
+                        <p className="text-[10px] text-[#8A7F72]">{booking.clientEmail}</p>
+                        <p className="text-[10px] font-mono text-[#D4A24C]">#{booking.ref}</p>
                       </td>
                       <td className="p-4 font-serif text-sm font-semibold text-[#ded8ce]">
                         {booking.serviceName}
                       </td>
                       <td className="p-4 text-[#ded8ce]">
                         <p className="font-bold">{booking.date}</p>
-                        <p className="text-[10px] text-[#807665]">{booking.timeSlot}</p>
+                        <p className="text-[10px] text-[#8A7F72]">{booking.timeSlot}</p>
                       </td>
-                      <td className="p-4 text-xs text-[#807665] max-w-xs truncate">
+                      <td className="p-4 text-xs text-[#8A7F72] max-w-xs truncate">
                         {booking.location}
                       </td>
-                      <td className="p-4 text-xs text-[#e2bd70]">
+                      <td className="p-4 text-xs text-[#D4A24C]">
                         {booking.artist || 'Unassigned'}
                       </td>
                       <td className="p-4">
@@ -1196,7 +1196,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                                 e.target.value as HennaBooking['status']
                               )
                             }
-                            className="bg-[#1c1c1a] border border-[#3d3d38] text-[10px] text-white p-1 rounded"
+                            className="bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] text-[10px] text-white p-1 rounded"
                           >
                             <option value="Confirmed">Confirmed</option>
                             <option value="Completed">Completed</option>
@@ -1206,7 +1206,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         {onDeleteHennaBooking && (
                           <button
                             onClick={() => onDeleteHennaBooking(booking.id)}
-                            className="p-1.5 hover:bg-[#3d3d38] rounded text-red-400"
+                            className="p-1.5 hover:bg-[var(--sc-border-dark)] rounded text-red-400"
                             title="Delete"
                           >
                             <span className="material-symbols-outlined text-sm">delete</span>
@@ -1223,20 +1223,20 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
         {/* SECTION 3: Jewellery Rentals Admin Table */}
         {adminSection === 'RENTALS' && (
-          <div className="bg-[#252522] rounded-2xl border border-[#3d3d38] overflow-hidden space-y-4 p-6">
-            <div className="flex justify-between items-center border-b border-[#3d3d38] pb-4">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-2xl border border-[var(--sc-border-dark)] overflow-hidden space-y-4 p-6">
+            <div className="flex justify-between items-center border-b border-[var(--sc-border-dark)] pb-4">
               <h3 className="font-serif text-xl font-bold text-white flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#c79a3b]">key</span>
+                <span className="material-symbols-outlined text-[#E0B45F]">key</span>
                 <span>Active Jewellery Rentals & Subscriptions</span>
               </h3>
-              <span className="text-xs text-[#807665]">
+              <span className="text-xs text-[#8A7F72]">
                 Total Rentals: {filteredJewelleryRentals.length}
               </span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#1c1c1a] text-[#807665] uppercase tracking-wider font-bold border-b border-[#3d3d38]">
+                <thead className="bg-[var(--sc-surface-alt)] text-[#8A7F72] uppercase tracking-wider font-bold border-b border-[var(--sc-border-dark)]">
                   <tr>
                     <th className="p-4">Product Item & Ref</th>
                     <th className="p-4">Daily Rate</th>
@@ -1246,27 +1246,27 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     <th className="p-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#3d3d38]">
+                <tbody className="divide-y divide-[var(--sc-border-dark)]">
                   {filteredJewelleryRentals.map((rental) => (
-                    <tr key={rental.id} className="hover:bg-[#2d2d2a] transition-colors">
+                    <tr key={rental.id} className="hover:bg-[#262b28] transition-colors">
                       <td className="p-4 flex items-center gap-3">
                         <img
                           src={rental.image}
                           alt={rental.productName}
-                          className="w-12 h-12 rounded-lg object-cover border border-[#3d3d38]"
+                          className="w-12 h-12 rounded-lg object-cover border border-[var(--sc-border-dark)]"
                         />
                         <div>
                           <p className="font-serif font-bold text-sm text-white">
                             {rental.productName}
                           </p>
-                          <p className="text-[10px] text-[#c79a3b] font-mono">
+                          <p className="text-[10px] text-[#E0B45F] font-mono">
                             REF: {rental.ref}
                           </p>
                         </div>
                       </td>
                       <td className="p-4 font-bold text-white">{rental.dailyRate}</td>
                       <td className="p-4 text-[#ded8ce]">{rental.startDate}</td>
-                      <td className="p-4 font-bold text-[#e2bd70]">{rental.returnDue}</td>
+                      <td className="p-4 font-bold text-[#D4A24C]">{rental.returnDue}</td>
                       <td className="p-4">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
@@ -1290,7 +1290,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                                 e.target.value as JewelleryRental['status']
                               )
                             }
-                            className="bg-[#1c1c1a] border border-[#3d3d38] text-[10px] text-white p-1 rounded"
+                            className="bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] text-[10px] text-white p-1 rounded"
                           >
                             <option value="Active Rental">Active Rental</option>
                             <option value="Returned">Returned</option>
@@ -1300,7 +1300,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         {onDeleteJewelleryRental && (
                           <button
                             onClick={() => onDeleteJewelleryRental(rental.id)}
-                            className="p-1.5 hover:bg-[#3d3d38] rounded text-red-400"
+                            className="p-1.5 hover:bg-[var(--sc-border-dark)] rounded text-red-400"
                             title="Delete"
                           >
                             <span className="material-symbols-outlined text-sm">delete</span>
@@ -1317,11 +1317,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
         {/* SECTION 4: Jewellery Customers & Orders Database Table */}
         {adminSection === 'CUSTOMERS' && (
-          <div className="bg-[#252522] rounded-2xl border border-[#3d3d38] overflow-hidden space-y-5 p-6 shadow-xl">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-2xl border border-[var(--sc-border-dark)] overflow-hidden space-y-5 p-6 shadow-xl">
             {/* Table Header Controls */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#3d3d38] pb-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[var(--sc-border-dark)] pb-4">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#0f5257] bg-[#0f5257]/30 px-2.5 py-0.5 rounded-full border border-[#0f5257]/50 text-emerald-300">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#E0B45F] bg-[#C08A34]/20 px-2.5 py-0.5 rounded-full border border-[#C08A34]/50">
                   Supabase Table: jewellery_customers
                 </span>
                 <h3 className="font-serif text-xl font-bold text-white flex items-center gap-2 mt-1">
@@ -1334,7 +1334,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowSqlSchemaModal(true)}
-                  className="px-3 py-1.5 bg-[#1c1c1a] hover:bg-[#3d3d38] border border-[#c79a3b]/40 text-[#c79a3b] font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] border border-[#E0B45F]/40 text-[#E0B45F] font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">code</span>
                   <span>View SQL Table DDL</span>
@@ -1344,7 +1344,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   type="button"
                   onClick={loadJewelleryCustomers}
                   disabled={isLoadingCustomers}
-                  className="px-3.5 py-1.5 bg-[#0f5257] hover:bg-[#146b72] text-white font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-1.5 bg-[#C08A34] hover:bg-[#D4A24C] text-white font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <span className={`material-symbols-outlined text-sm ${isLoadingCustomers ? 'animate-spin' : ''}`}>
                     refresh
@@ -1356,7 +1356,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
             {/* Search Filter Input */}
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-3.5 top-2.5 text-[#807665] text-base">
+              <span className="material-symbols-outlined absolute left-3.5 top-2.5 text-[#8A7F72] text-base">
                 search
               </span>
               <input
@@ -1364,14 +1364,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 placeholder="Search customers by Name, Phone, Order Ref, Address, or UPI Txn ID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-[#1c1c1a] border border-[#3d3d38] rounded-xl text-xs text-white placeholder-[#807665] focus:outline-none focus:border-emerald-500"
+                className="w-full pl-10 pr-4 py-2 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             {/* Customer Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#1c1c1a] text-[#807665] uppercase tracking-wider font-bold border-b border-[#3d3d38]">
+                <thead className="bg-[var(--sc-surface-alt)] text-[#8A7F72] uppercase tracking-wider font-bold border-b border-[var(--sc-border-dark)]">
                   <tr>
                     <th className="p-3.5">Customer Details</th>
                     <th className="p-3.5">Order Ref & Product</th>
@@ -1382,7 +1382,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     <th className="p-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#3d3d38]">
+                <tbody className="divide-y divide-[var(--sc-border-dark)]">
                   {customersList
                     .filter(
                       (c) =>
@@ -1400,11 +1400,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       )}`;
 
                       return (
-                        <tr key={cust.id || cust.orderRef || idx} className="hover:bg-[#2d2d2a] transition-colors">
+                        <tr key={cust.id || cust.orderRef || idx} className="hover:bg-[#262b28] transition-colors">
                           <td className="p-3.5">
                             <p className="font-bold text-white text-sm">{cust.customerName}</p>
-                            <p className="text-[11px] text-[#c79a3b] font-mono mt-0.5">{cust.phone}</p>
-                            {cust.email && <p className="text-[10px] text-[#807665] truncate max-w-[140px]">{cust.email}</p>}
+                            <p className="text-[11px] text-[#E0B45F] font-mono mt-0.5">{cust.phone}</p>
+                            {cust.email && <p className="text-[10px] text-[#8A7F72] truncate max-w-[140px]">{cust.email}</p>}
                           </td>
 
                           <td className="p-3.5">
@@ -1424,13 +1424,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
                           <td className="p-3.5">
                             <p className="font-bold text-emerald-400 text-sm">{cust.totalAmount}</p>
-                            <p className="text-[10px] text-[#807665]">
+                            <p className="text-[10px] text-[#8A7F72]">
                               Item: {cust.itemPrice} | Courier: {cust.shippingFee}
                             </p>
                           </td>
 
                           <td className="p-3.5 font-mono text-[11px]">
-                            <span className="bg-[#1c1c1a] px-2 py-1 rounded border border-[#3d3d38] text-amber-300 font-bold block w-max">
+                            <span className="bg-[var(--sc-surface-alt)] px-2 py-1 rounded border border-[var(--sc-border-dark)] text-amber-300 font-bold block w-max">
                               {cust.upiTransactionId}
                             </span>
                             <span className="text-[10px] text-emerald-400 font-semibold block mt-0.5">
@@ -1463,7 +1463,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                                   e.target.value as JewelleryCustomer['orderStatus']
                                 )
                               }
-                              className="bg-[#1c1c1a] border border-[#3d3d38] text-[10px] text-white p-1 rounded font-bold cursor-pointer"
+                              className="bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] text-[10px] text-white p-1 rounded font-bold cursor-pointer"
                             >
                               <option value="Processing">Processing</option>
                               <option value="Dispatched">Dispatched</option>
@@ -1475,7 +1475,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                               href={whatsappUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="p-1.5 bg-[#25D366]/20 hover:bg-[#25D366]/40 text-[#25D366] rounded inline-flex items-center"
+                              className="p-1.5 bg-[#2C6B4F]/20 hover:bg-[#2C6B4F]/40 text-[#2C6B4F] rounded inline-flex items-center"
                               title="Chat on WhatsApp"
                             >
                               <span className="material-symbols-outlined text-sm">chat</span>
@@ -1495,7 +1495,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
                   {customersList.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-[#807665] text-xs">
+                      <td colSpan={7} className="p-8 text-center text-[#8A7F72] text-xs">
                         No customer orders recorded yet in `jewellery_customers`. New express checkouts will populate automatically!
                       </td>
                     </tr>
@@ -1508,9 +1508,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
         {/* SECTION 5: Jewellery Bookings Database Table */}
         {adminSection === 'JEWELLERY_BOOKINGS' && (
-          <div className="bg-[#252522] rounded-2xl border border-[#3d3d38] overflow-hidden space-y-5 p-6 shadow-xl">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-2xl border border-[var(--sc-border-dark)] overflow-hidden space-y-5 p-6 shadow-xl">
             {/* Table Header Controls */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#3d3d38] pb-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[var(--sc-border-dark)] pb-4">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300 bg-blue-950/40 px-2.5 py-0.5 rounded-full border border-blue-500/40">
                   Supabase Table: jewellery_bookings
@@ -1525,7 +1525,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowBookingsSqlModal(true)}
-                  className="px-3 py-1.5 bg-[#1c1c1a] hover:bg-[#3d3d38] border border-[#c79a3b]/40 text-[#c79a3b] font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] border border-[#E0B45F]/40 text-[#E0B45F] font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">code</span>
                   <span>View SQL Table DDL</span>
@@ -1547,7 +1547,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
             {/* Search Filter Input */}
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-3.5 top-2.5 text-[#807665] text-base">
+              <span className="material-symbols-outlined absolute left-3.5 top-2.5 text-[#8A7F72] text-base">
                 search
               </span>
               <input
@@ -1555,14 +1555,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 placeholder="Search bookings by Ref, Client Name, Phone, Item, Transaction ID, or Location..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-[#1c1c1a] border border-[#3d3d38] rounded-xl text-xs text-white placeholder-[#807665] focus:outline-none focus:border-blue-500"
+                className="w-full pl-10 pr-4 py-2 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-blue-500"
               />
             </div>
 
             {/* Jewellery Bookings Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#1c1c1a] text-[#807665] uppercase tracking-wider font-bold border-b border-[#3d3d38]">
+                <thead className="bg-[var(--sc-surface-alt)] text-[#8A7F72] uppercase tracking-wider font-bold border-b border-[var(--sc-border-dark)]">
                   <tr>
                     <th className="p-3.5">Booking Ref & Type</th>
                     <th className="p-3.5">Client & Contact</th>
@@ -1574,7 +1574,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     <th className="p-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#3d3d38]">
+                <tbody className="divide-y divide-[var(--sc-border-dark)]">
                   {jewelleryBookingsList
                     .filter(
                       (b) =>
@@ -1592,20 +1592,20 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       )}`;
 
                       return (
-                        <tr key={bk.id || bk.bookingRef || idx} className="hover:bg-[#2d2d2a] transition-colors">
+                        <tr key={bk.id || bk.bookingRef || idx} className="hover:bg-[#262b28] transition-colors">
                           <td className="p-3.5">
                             <span className="font-mono text-[10px] font-bold text-blue-400 bg-blue-950/60 border border-blue-800 px-2 py-0.5 rounded-full block w-max">
                               {bk.bookingRef}
                             </span>
-                            <span className="text-[10px] uppercase tracking-wider text-[#c79a3b] font-bold mt-1 block">
+                            <span className="text-[10px] uppercase tracking-wider text-[#E0B45F] font-bold mt-1 block">
                               {bk.bookingType || 'Rental'}
                             </span>
                           </td>
 
                           <td className="p-3.5">
                             <p className="font-bold text-white text-sm">{bk.clientName}</p>
-                            <p className="text-[11px] text-[#c79a3b] font-mono mt-0.5">{bk.phone}</p>
-                            {bk.email && <p className="text-[10px] text-[#807665] truncate max-w-[130px]">{bk.email}</p>}
+                            <p className="text-[11px] text-[#E0B45F] font-mono mt-0.5">{bk.phone}</p>
+                            {bk.email && <p className="text-[10px] text-[#8A7F72] truncate max-w-[130px]">{bk.email}</p>}
                           </td>
 
                           <td className="p-3.5 max-w-xs">
@@ -1617,7 +1617,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           <td className="p-3.5">
                             <p className="text-xs font-semibold text-white">{bk.startDate}</p>
                             {bk.endDate && bk.endDate !== bk.startDate && (
-                              <p className="text-[10px] text-[#807665]">To: {bk.endDate}</p>
+                              <p className="text-[10px] text-[#8A7F72]">To: {bk.endDate}</p>
                             )}
                             {bk.durationDays && bk.durationDays > 1 && (
                               <p className="text-[10px] text-amber-300 font-bold">{bk.durationDays} Days Duration</p>
@@ -1626,13 +1626,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
                           <td className="p-3.5">
                             <p className="font-bold text-emerald-400 text-sm">{bk.totalPrice}</p>
-                            <p className="text-[10px] text-[#807665] truncate max-w-[140px]" title={bk.location}>
+                            <p className="text-[10px] text-[#8A7F72] truncate max-w-[140px]" title={bk.location}>
                               📍 {bk.location || 'Studio Pickup'}
                             </p>
                           </td>
 
                           <td className="p-3.5 font-mono text-[11px]">
-                            <span className="bg-[#1c1c1a] px-2 py-1 rounded border border-[#3d3d38] text-amber-300 font-bold block w-max">
+                            <span className="bg-[var(--sc-surface-alt)] px-2 py-1 rounded border border-[var(--sc-border-dark)] text-amber-300 font-bold block w-max">
                               {bk.transactionId || 'N/A'}
                             </span>
                             <span className="text-[10px] text-emerald-400 font-semibold block mt-0.5">
@@ -1667,7 +1667,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                                   e.target.value as JewelleryBooking['status']
                                 )
                               }
-                              className="bg-[#1c1c1a] border border-[#3d3d38] text-[10px] text-white p-1 rounded font-bold cursor-pointer"
+                              className="bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] text-[10px] text-white p-1 rounded font-bold cursor-pointer"
                             >
                               <option value="Active Rental">Active Rental</option>
                               <option value="Confirmed">Confirmed</option>
@@ -1680,7 +1680,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                               href={whatsappUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="p-1.5 bg-[#25D366]/20 hover:bg-[#25D366]/40 text-[#25D366] rounded inline-flex items-center"
+                              className="p-1.5 bg-[#2C6B4F]/20 hover:bg-[#2C6B4F]/40 text-[#2C6B4F] rounded inline-flex items-center"
                               title="Chat on WhatsApp"
                             >
                               <span className="material-symbols-outlined text-sm">chat</span>
@@ -1700,7 +1700,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
                   {jewelleryBookingsList.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-[#807665] text-xs">
+                      <td colSpan={8} className="p-8 text-center text-[#8A7F72] text-xs">
                         No jewellery bookings stored yet in `jewellery_bookings`. New rental reservations & package bookings will appear here automatically!
                       </td>
                     </tr>
@@ -1715,14 +1715,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       {/* Add / Edit Product Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
-          <div className="bg-[#252522] border border-[#3d3d38] text-[#ded8ce] rounded-2xl max-w-xl w-full p-6 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-[#3d3d38] pb-4">
+          <div className="bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] text-[#ded8ce] rounded-2xl max-w-xl w-full p-6 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-[var(--sc-border-dark)] pb-4">
               <h3 className="font-serif text-xl font-bold text-white">
                 {editingProduct ? 'Edit Product Item' : 'Add New Jewellery Item'}
               </h3>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1 hover:bg-[#3d3d38] rounded-full text-[#807665]"
+                className="p-1 hover:bg-[var(--sc-border-dark)] rounded-full text-[#8A7F72]"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
@@ -1730,25 +1730,25 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
             <form onSubmit={handleSaveProduct} className="space-y-5 text-xs">
               <div className="space-y-1">
-                <label className="font-bold text-[#807665] uppercase">Product Name</label>
+                <label className="font-bold text-[#8A7F72] uppercase">Product Name</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Royal Kundan Bridal Choker Set"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full p-3 bg-[#1c1c1a] border border-[#3d3d38] rounded-lg text-white"
+                  className="w-full p-3 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-lg text-white"
                 />
               </div>
 
               {/* JEWELLERY IMAGE UPLOADER & URL SECTION */}
-              <div className="space-y-3 bg-[#1c1c1a] p-4 rounded-xl border border-[#3d3d38]">
-                <label className="font-bold text-[#c79a3b] uppercase flex items-center justify-between">
+              <div className="space-y-3 bg-[var(--sc-surface-alt)] p-4 rounded-xl border border-[var(--sc-border-dark)]">
+                <label className="font-bold text-[#E0B45F] uppercase flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm">add_a_photo</span>
                     <span>Jewellery Image(s)</span>
                   </span>
-                  <span className="text-[10px] text-[#807665] font-normal lowercase">
+                  <span className="text-[10px] text-[#8A7F72] font-normal lowercase">
                     ({formData.images.length} image{formData.images.length === 1 ? '' : 's'})
                   </span>
                 </label>
@@ -1757,11 +1757,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {/* Option A: Upload Device File */}
                   <div className="space-y-1">
-                    <span className="text-[10px] text-[#807665] font-bold uppercase">
+                    <span className="text-[10px] text-[#8A7F72] font-bold uppercase">
                       Option 1: Upload File from Device
                     </span>
-                    <label className="flex items-center justify-center gap-2 p-3 bg-[#252522] border border-dashed border-[#c79a3b]/50 hover:border-[#c79a3b] rounded-lg cursor-pointer transition-colors text-white text-xs">
-                      <span className="material-symbols-outlined text-base text-[#c79a3b]">
+                    <label className="flex items-center justify-center gap-2 p-3 bg-[var(--sc-surface-alt-card)] border border-dashed border-[#E0B45F]/50 hover:border-[#E0B45F] rounded-lg cursor-pointer transition-colors text-white text-xs">
+                      <span className="material-symbols-outlined text-base text-[#E0B45F]">
                         upload_file
                       </span>
                       <span>Choose Image File...</span>
@@ -1776,7 +1776,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
                   {/* Option B: Enter Web URL */}
                   <div className="space-y-1">
-                    <span className="text-[10px] text-[#807665] font-bold uppercase">
+                    <span className="text-[10px] text-[#8A7F72] font-bold uppercase">
                       Option 2: Paste Image URL
                     </span>
                     <div className="flex gap-2">
@@ -1785,12 +1785,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         placeholder="https://example.com/jewellery.jpg"
                         value={imageUrlInput}
                         onChange={(e) => setImageUrlInput(e.target.value)}
-                        className="flex-1 p-2.5 bg-[#252522] border border-[#3d3d38] rounded-lg text-white placeholder-[#807665]"
+                        className="flex-1 p-2.5 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-lg text-white placeholder-[#8A7F72]"
                       />
                       <button
                         type="button"
                         onClick={handleAddImageUrl}
-                        className="px-3 py-2 bg-[#c79a3b] text-[#1c1c1a] font-bold rounded-lg shrink-0 hover:bg-white transition-colors"
+                        className="px-3 py-2 bg-[#E0B45F] text-[var(--sc-surface-alt)] font-bold rounded-lg shrink-0 hover:bg-[#D4A24C] transition-colors"
                       >
                         Add URL
                       </button>
@@ -1800,15 +1800,15 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
                 {/* Live Image Thumbnails Preview */}
                 {formData.images.length > 0 && (
-                  <div className="space-y-1.5 pt-2 border-t border-[#3d3d38]">
-                    <span className="text-[10px] text-[#807665] font-bold uppercase">
+                  <div className="space-y-1.5 pt-2 border-t border-[var(--sc-border-dark)]">
+                    <span className="text-[10px] text-[#8A7F72] font-bold uppercase">
                       Current Images Preview:
                     </span>
                     <div className="flex flex-wrap gap-2">
                       {formData.images.map((img, idx) => (
                         <div
                           key={idx}
-                          className="relative group w-20 h-20 rounded-lg overflow-hidden border border-[#3d3d38] bg-[#252522]"
+                          className="relative group w-20 h-20 rounded-lg overflow-hidden border border-[var(--sc-border-dark)] bg-[var(--sc-surface-alt-card)]"
                         >
                           <img
                             src={img}
@@ -1816,7 +1816,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                             className="w-full h-full object-cover"
                           />
                           {idx === 0 && (
-                            <span className="absolute bottom-0 inset-x-0 bg-[#c79a3b] text-[#1c1c1a] text-[8px] font-bold text-center py-0.5">
+                            <span className="absolute bottom-0 inset-x-0 bg-[#E0B45F] text-[var(--sc-surface-alt)] text-[8px] font-bold text-center py-0.5">
                               Main Cover
                             </span>
                           )}
@@ -1837,13 +1837,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="font-bold text-[#807665] uppercase">Category</label>
+                  <label className="font-bold text-[#8A7F72] uppercase">Category</label>
                   <select
                     value={formData.category}
                     onChange={(e) =>
                       setFormData({ ...formData, category: e.target.value as any })
                     }
-                    className="w-full p-3 bg-[#1c1c1a] border border-[#3d3d38] rounded-lg text-white"
+                    className="w-full p-3 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-lg text-white"
                   >
                     <option value="Bridal">Bridal</option>
                     <option value="Minimal">Minimal</option>
@@ -1853,13 +1853,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-[#807665] uppercase">Type</label>
+                  <label className="font-bold text-[#8A7F72] uppercase">Type</label>
                   <select
                     value={formData.type}
                     onChange={(e) =>
                       setFormData({ ...formData, type: e.target.value as any })
                     }
-                    className="w-full p-3 bg-[#1c1c1a] border border-[#3d3d38] rounded-lg text-white"
+                    className="w-full p-3 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-lg text-white"
                   >
                     <option value="Rental">Rental</option>
                     <option value="Sale">Sale</option>
@@ -1867,19 +1867,19 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-[#807665] uppercase">Price (Purchase Amount)</label>
+                  <label className="font-bold text-[#8A7F72] uppercase">Price (Purchase Amount)</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. ₹25,000"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    className="w-full p-3 bg-[#1c1c1a] border border-[#3d3d38] rounded-lg text-white"
+                    className="w-full p-3 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-lg text-white"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-[#807665] uppercase">Rental Rate (per day)</label>
+                  <label className="font-bold text-[#8A7F72] uppercase">Rental Rate (per day)</label>
                   <input
                     type="text"
                     placeholder="e.g. ₹2,000/day"
@@ -1887,12 +1887,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     onChange={(e) =>
                       setFormData({ ...formData, rentalPriceDay: e.target.value })
                     }
-                    className="w-full p-3 bg-[#1c1c1a] border border-[#3d3d38] rounded-lg text-white"
+                    className="w-full p-3 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-lg text-white"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-[#807665] uppercase">Available Stock Count</label>
+                  <label className="font-bold text-[#8A7F72] uppercase">Available Stock Count</label>
                   <input
                     type="number"
                     min={0}
@@ -1905,44 +1905,44 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         stockLabel: count > 0 ? `${count} Available` : 'Out of Stock',
                       });
                     }}
-                    className="w-full p-3 bg-[#1c1c1a] border border-[#3d3d38] rounded-lg text-white"
+                    className="w-full p-3 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-lg text-white"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-[#807665] uppercase">Material Details</label>
+                  <label className="font-bold text-[#8A7F72] uppercase">Material Details</label>
                   <input
                     type="text"
                     placeholder="e.g. 22k Gold Plated, Kundan, Pearls"
                     value={formData.material}
                     onChange={(e) => setFormData({ ...formData, material: e.target.value })}
-                    className="w-full p-3 bg-[#1c1c1a] border border-[#3d3d38] rounded-lg text-white"
+                    className="w-full p-3 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-lg text-white"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-[#807665] uppercase">Description</label>
+                <label className="font-bold text-[#8A7F72] uppercase">Description</label>
                 <textarea
                   rows={2}
                   placeholder="Details regarding crafting, design style, and grandeur..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full p-3 bg-[#1c1c1a] border border-[#3d3d38] rounded-lg text-white"
+                  className="w-full p-3 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-lg text-white"
                 />
               </div>
 
-              <div className="border-t border-[#3d3d38] pt-4 flex justify-end gap-3">
+              <div className="border-t border-[var(--sc-border-dark)] pt-4 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-5 py-2.5 bg-[#1c1c1a] text-white rounded-lg"
+                  className="px-5 py-2.5 bg-[var(--sc-surface-alt)] text-white rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="btn-royal px-6 py-2.5 bg-[#c79a3b] text-[#1c1c1a] font-bold rounded-lg"
+                  className="btn-royal px-6 py-2.5 bg-[#E0B45F] text-[var(--sc-surface-alt)] font-bold rounded-lg"
                 >
                   Save Product
                 </button>
@@ -1955,10 +1955,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       {/* SQL TABLE SCHEMA (DDL) MODAL FOR jewellery_customers */}
       {showSqlSchemaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-[#252522] rounded-3xl p-6 md:p-8 max-w-2xl w-full border border-[#c79a3b]/50 shadow-2xl space-y-5 relative">
-            <div className="flex justify-between items-start border-b border-[#3d3d38] pb-4">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-3xl p-6 md:p-8 max-w-2xl w-full border border-[#E0B45F]/50 shadow-2xl space-y-5 relative">
+            <div className="flex justify-between items-start border-b border-[var(--sc-border-dark)] pb-4">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#c79a3b] bg-[#c79a3b]/10 px-2.5 py-0.5 rounded-full border border-[#c79a3b]/30">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#E0B45F] bg-[#E0B45F]/10 px-2.5 py-0.5 rounded-full border border-[#E0B45F]/30">
                   PostgreSQL DDL Query
                 </span>
                 <h3 className="font-serif text-xl font-bold text-white mt-1">
@@ -1968,18 +1968,18 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSqlSchemaModal(false)}
-                className="p-1.5 bg-[#1c1c1a] hover:bg-[#3d3d38] rounded-full text-white transition-colors cursor-pointer"
+                className="p-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] rounded-full text-white transition-colors cursor-pointer"
               >
                 <span className="material-symbols-outlined text-lg">close</span>
               </button>
             </div>
 
             <p className="text-xs text-[#ded8ce] leading-relaxed">
-              Copy and execute the following SQL script in your <strong className="text-[#c79a3b]">Supabase SQL Editor</strong> to initialize or reset the customer details table:
+              Copy and execute the following SQL script in your <strong className="text-[#E0B45F]">Supabase SQL Editor</strong> to initialize or reset the customer details table:
             </p>
 
             <div className="relative">
-              <pre className="bg-[#121211] p-4 rounded-2xl border border-[#3d3d38] text-xs font-mono text-emerald-300 max-h-64 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-900 selection:text-white">
+              <pre className="bg-[#14110E] p-4 rounded-2xl border border-[var(--sc-border-dark)] text-xs font-mono text-emerald-300 max-h-64 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-900 selection:text-white">
                 {JEWELLERY_CUSTOMERS_TABLE_SQL}
               </pre>
 
@@ -1990,7 +1990,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   setCopiedSql(true);
                   setTimeout(() => setCopiedSql(false), 2500);
                 }}
-                className="absolute top-3 right-3 px-3 py-1.5 bg-[#c79a3b] hover:bg-[#7b5900] text-[#1c1c1a] font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1 cursor-pointer"
+                className="absolute top-3 right-3 px-3 py-1.5 bg-[#E0B45F] hover:bg-[#C08A34] text-[var(--sc-surface-alt)] font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-sm">content_copy</span>
                 <span>{copiedSql ? '✓ COPIED!' : 'Copy SQL'}</span>
@@ -2001,7 +2001,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSqlSchemaModal(false)}
-                className="px-5 py-2.5 bg-[#1c1c1a] hover:bg-[#3d3d38] text-white font-bold text-xs rounded-xl border border-[#3d3d38] cursor-pointer"
+                className="px-5 py-2.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] text-white font-bold text-xs rounded-xl border border-[var(--sc-border-dark)] cursor-pointer"
               >
                 Close Modal
               </button>
@@ -2012,8 +2012,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       {/* SQL TABLE SCHEMA (DDL) MODAL FOR jewellery_bookings */}
       {showBookingsSqlModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-[#252522] rounded-3xl p-6 md:p-8 max-w-2xl w-full border border-blue-500/50 shadow-2xl space-y-5 relative">
-            <div className="flex justify-between items-start border-b border-[#3d3d38] pb-4">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-3xl p-6 md:p-8 max-w-2xl w-full border border-blue-500/50 shadow-2xl space-y-5 relative">
+            <div className="flex justify-between items-start border-b border-[var(--sc-border-dark)] pb-4">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300 bg-blue-950/40 px-2.5 py-0.5 rounded-full border border-blue-500/40">
                   PostgreSQL DDL Query
@@ -2025,7 +2025,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowBookingsSqlModal(false)}
-                className="p-1.5 bg-[#1c1c1a] hover:bg-[#3d3d38] rounded-full text-white transition-colors cursor-pointer"
+                className="p-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] rounded-full text-white transition-colors cursor-pointer"
               >
                 <span className="material-symbols-outlined text-lg">close</span>
               </button>
@@ -2036,7 +2036,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             </p>
 
             <div className="relative">
-              <pre className="bg-[#121211] p-4 rounded-2xl border border-[#3d3d38] text-xs font-mono text-blue-300 max-h-64 overflow-y-auto whitespace-pre-wrap selection:bg-blue-900 selection:text-white">
+              <pre className="bg-[#14110E] p-4 rounded-2xl border border-[var(--sc-border-dark)] text-xs font-mono text-blue-300 max-h-64 overflow-y-auto whitespace-pre-wrap selection:bg-blue-900 selection:text-white">
                 {JEWELLERY_BOOKINGS_TABLE_SQL}
               </pre>
 
@@ -2058,7 +2058,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowBookingsSqlModal(false)}
-                className="px-5 py-2.5 bg-[#1c1c1a] hover:bg-[#3d3d38] text-white font-bold text-xs rounded-xl border border-[#3d3d38] cursor-pointer"
+                className="px-5 py-2.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] text-white font-bold text-xs rounded-xl border border-[var(--sc-border-dark)] cursor-pointer"
               >
                 Close Modal
               </button>
@@ -2070,10 +2070,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       {/* SQL TABLE SCHEMA (DDL) MODAL FOR jewellery items */}
       {showJewellerySqlModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-[#252522] rounded-3xl p-6 md:p-8 max-w-2xl w-full border border-[#c79a3b]/50 shadow-2xl space-y-5 relative">
-            <div className="flex justify-between items-start border-b border-[#3d3d38] pb-4">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-3xl p-6 md:p-8 max-w-2xl w-full border border-[#E0B45F]/50 shadow-2xl space-y-5 relative">
+            <div className="flex justify-between items-start border-b border-[var(--sc-border-dark)] pb-4">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#c79a3b] bg-[#c79a3b]/10 px-2.5 py-0.5 rounded-full border border-[#c79a3b]/30">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#E0B45F] bg-[#E0B45F]/10 px-2.5 py-0.5 rounded-full border border-[#E0B45F]/30">
                   PostgreSQL DDL Query
                 </span>
                 <h3 className="font-serif text-xl font-bold text-white mt-1">
@@ -2083,18 +2083,18 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowJewellerySqlModal(false)}
-                className="p-1.5 bg-[#1c1c1a] hover:bg-[#3d3d38] rounded-full text-white transition-colors cursor-pointer"
+                className="p-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] rounded-full text-white transition-colors cursor-pointer"
               >
                 <span className="material-symbols-outlined text-lg">close</span>
               </button>
             </div>
 
             <p className="text-xs text-[#ded8ce] leading-relaxed">
-              Copy and execute the following SQL script in your <strong className="text-[#c79a3b]">Supabase SQL Editor</strong> to create or populate the <code className="text-[#c79a3b] font-mono">jewellery</code> table with sample bridal & minimal items:
+              Copy and execute the following SQL script in your <strong className="text-[#E0B45F]">Supabase SQL Editor</strong> to create or populate the <code className="text-[#E0B45F] font-mono">jewellery</code> table with sample bridal & minimal items:
             </p>
 
             <div className="relative">
-              <pre className="bg-[#121211] p-4 rounded-2xl border border-[#3d3d38] text-xs font-mono text-amber-300 max-h-64 overflow-y-auto whitespace-pre-wrap selection:bg-amber-900 selection:text-white">
+              <pre className="bg-[#14110E] p-4 rounded-2xl border border-[var(--sc-border-dark)] text-xs font-mono text-amber-300 max-h-64 overflow-y-auto whitespace-pre-wrap selection:bg-amber-900 selection:text-white">
                 {JEWELLERY_TABLE_SQL}
               </pre>
 
@@ -2105,7 +2105,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   setCopiedJewellerySql(true);
                   setTimeout(() => setCopiedJewellerySql(false), 2500);
                 }}
-                className="absolute top-3 right-3 px-3 py-1.5 bg-[#c79a3b] hover:bg-[#7b5900] text-[#1c1c1a] font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1 cursor-pointer"
+                className="absolute top-3 right-3 px-3 py-1.5 bg-[#E0B45F] hover:bg-[#C08A34] text-[var(--sc-surface-alt)] font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-sm">content_copy</span>
                 <span>{copiedJewellerySql ? '✓ COPIED!' : 'Copy SQL'}</span>
@@ -2116,7 +2116,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowJewellerySqlModal(false)}
-                className="px-5 py-2.5 bg-[#1c1c1a] hover:bg-[#3d3d38] text-white font-bold text-xs rounded-xl border border-[#3d3d38] cursor-pointer"
+                className="px-5 py-2.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] text-white font-bold text-xs rounded-xl border border-[var(--sc-border-dark)] cursor-pointer"
               >
                 Close Modal
               </button>
@@ -2128,17 +2128,17 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       {/* SUPABASE CONNECTION & DIAGNOSTICS MODAL */}
       {showConfigModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-[#252522] rounded-3xl p-6 md:p-8 max-w-2xl w-full border border-[#c79a3b]/60 shadow-2xl space-y-6 relative my-8">
-            <div className="flex justify-between items-start border-b border-[#3d3d38] pb-4">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-3xl p-6 md:p-8 max-w-2xl w-full border border-[#E0B45F]/60 shadow-2xl space-y-6 relative my-8">
+            <div className="flex justify-between items-start border-b border-[var(--sc-border-dark)] pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#c79a3b]/10 border border-[#c79a3b]/30 flex items-center justify-center text-[#c79a3b]">
+                <div className="w-10 h-10 rounded-2xl bg-[#E0B45F]/10 border border-[#E0B45F]/30 flex items-center justify-center text-[#E0B45F]">
                   <span className="material-symbols-outlined text-xl">database</span>
                 </div>
                 <div>
                   <h3 className="font-serif text-xl font-bold text-white">
                     Supabase Connection & Diagnostics
                   </h3>
-                  <p className="text-xs text-[#807665]">
+                  <p className="text-xs text-[#8A7F72]">
                     Configure credentials & diagnose database reachability and table access
                   </p>
                 </div>
@@ -2146,7 +2146,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowConfigModal(false)}
-                className="p-1.5 bg-[#1c1c1a] hover:bg-[#3d3d38] rounded-full text-white transition-colors cursor-pointer"
+                className="p-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] rounded-full text-white transition-colors cursor-pointer"
               >
                 <span className="material-symbols-outlined text-lg">close</span>
               </button>
@@ -2164,10 +2164,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <div className="space-y-1">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-[#ded8ce] flex items-center justify-between">
                   <span>Supabase Project URL</span>
-                  <span className="text-[#807665] font-normal lowercase">e.g. https://xyzcompany.supabase.co</span>
+                  <span className="text-[#8A7F72] font-normal lowercase">e.g. https://xyzcompany.supabase.co</span>
                 </label>
                 <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-3 text-[#807665] text-base">
+                  <span className="material-symbols-outlined absolute left-3 top-3 text-[#8A7F72] text-base">
                     link
                   </span>
                   <input
@@ -2175,7 +2175,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     value={customUrlInput}
                     onChange={(e) => setCustomUrlInput(e.target.value)}
                     placeholder="https://your-project-ref.supabase.co"
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#1c1c1a] border border-[#3d3d38] rounded-xl text-xs text-white placeholder-[#807665] focus:outline-none focus:border-[#c79a3b]"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
                   />
                 </div>
               </div>
@@ -2183,10 +2183,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <div className="space-y-1">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-[#ded8ce] flex items-center justify-between">
                   <span>Supabase Anon / Public API Key</span>
-                  <span className="text-[#807665] font-normal lowercase">from Supabase Dashboard &gt; Project Settings &gt; API</span>
+                  <span className="text-[#8A7F72] font-normal lowercase">from Supabase Dashboard &gt; Project Settings &gt; API</span>
                 </label>
                 <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-3 text-[#807665] text-base">
+                  <span className="material-symbols-outlined absolute left-3 top-3 text-[#8A7F72] text-base">
                     key
                   </span>
                   <input
@@ -2194,7 +2194,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     value={customKeyInput}
                     onChange={(e) => setCustomKeyInput(e.target.value)}
                     placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#1c1c1a] border border-[#3d3d38] rounded-xl text-xs font-mono text-white placeholder-[#807665] focus:outline-none focus:border-[#c79a3b]"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs font-mono text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
                   />
                 </div>
               </div>
@@ -2202,7 +2202,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <div className="flex flex-wrap gap-3 pt-2">
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-[#c79a3b] hover:bg-white text-[#1c1c1a] font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2.5 bg-[#E0B45F] hover:bg-[#D4A24C] text-[var(--sc-surface-alt)] font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">save</span>
                   <span>Save & Apply Credentials</span>
@@ -2212,7 +2212,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   type="button"
                   onClick={handleTestConnection}
                   disabled={isTestingConnection}
-                  className="px-5 py-2.5 bg-[#1c1c1a] hover:bg-[#3d3d38] border border-[#c79a3b]/40 text-[#c79a3b] hover:text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] border border-[#E0B45F]/40 text-[#E0B45F] hover:text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <span className={`material-symbols-outlined text-sm ${isTestingConnection ? 'animate-spin' : ''}`}>
                     {isTestingConnection ? 'refresh' : 'network_check'}
@@ -2224,15 +2224,15 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
             {/* Diagnostic Results Card */}
             {diagnosticResult && (
-              <div className="bg-[#121211] p-5 rounded-2xl border border-[#3d3d38] space-y-4 animate-in fade-in">
-                <div className="flex items-center justify-between border-b border-[#252522] pb-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#c79a3b] flex items-center gap-1.5">
+              <div className="bg-[#14110E] p-5 rounded-2xl border border-[var(--sc-border-dark)] space-y-4 animate-in fade-in">
+                <div className="flex items-center justify-between border-b border-[var(--sc-surface-alt-card)] pb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#E0B45F] flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm">troubleshoot</span>
                     <span>Diagnostic Health Check</span>
                   </span>
                   <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                     diagnosticResult.status === 'OK'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      ? 'bg-[#C08A34]/20 text-[#E0B45F] border border-emerald-500/30'
                       : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                   }`}>
                     {diagnosticResult.status}
@@ -2240,8 +2240,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 bg-[#1c1c1a] rounded-xl border border-[#3d3d38] space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-[#807665]">Configured URL</span>
+                  <div className="p-3 bg-[var(--sc-surface-alt)] rounded-xl border border-[var(--sc-border-dark)] space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-[#8A7F72]">Configured URL</span>
                     <p className="font-mono text-white truncate text-[11px]">{diagnosticResult.url}</p>
                     <p className="text-[11px] flex items-center gap-1">
                       {diagnosticResult.isConfigured ? (
@@ -2252,8 +2252,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     </p>
                   </div>
 
-                  <div className="p-3 bg-[#1c1c1a] rounded-xl border border-[#3d3d38] space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-[#807665]">Network Reachable</span>
+                  <div className="p-3 bg-[var(--sc-surface-alt)] rounded-xl border border-[var(--sc-border-dark)] space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-[#8A7F72]">Network Reachable</span>
                     <p className="font-semibold text-white">
                       {diagnosticResult.isReachable ? 'Online & Pingable' : 'Offline / Unreachable'}
                     </p>
@@ -2266,8 +2266,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     </p>
                   </div>
 
-                  <div className="p-3 bg-[#1c1c1a] rounded-xl border border-[#3d3d38] space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-[#807665]">Table `jewellery`</span>
+                  <div className="p-3 bg-[var(--sc-surface-alt)] rounded-xl border border-[var(--sc-border-dark)] space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-[#8A7F72]">Table `jewellery`</span>
                     <p className="font-semibold text-white">
                       {diagnosticResult.jewelleryTableExists ? 'Table Found' : 'Table Not Found'}
                     </p>
@@ -2282,8 +2282,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     </p>
                   </div>
 
-                  <div className="p-3 bg-[#1c1c1a] rounded-xl border border-[#3d3d38] space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-[#807665]">Table `bookings`</span>
+                  <div className="p-3 bg-[var(--sc-surface-alt)] rounded-xl border border-[var(--sc-border-dark)] space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-[#8A7F72]">Table `bookings`</span>
                     <p className="font-semibold text-white">
                       {diagnosticResult.bookingsTableExists ? 'Table Found' : 'Table Not Found'}
                     </p>
@@ -2293,7 +2293,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           ✓ {diagnosticResult.bookingsRowCount} bookings loaded
                         </span>
                       ) : (
-                        <span className="text-[#807665]">Awaiting first booking</span>
+                        <span className="text-[#8A7F72]">Awaiting first booking</span>
                       )}
                     </p>
                   </div>
@@ -2313,14 +2313,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-2 border-t border-[#3d3d38]">
+            <div className="flex justify-between items-center pt-2 border-t border-[var(--sc-border-dark)]">
               <button
                 type="button"
                 onClick={() => {
                   setShowConfigModal(false);
                   setShowJewellerySqlModal(true);
                 }}
-                className="text-xs text-[#c79a3b] hover:text-white font-bold flex items-center gap-1 cursor-pointer"
+                className="text-xs text-[#E0B45F] hover:text-white font-bold flex items-center gap-1 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-sm">code</span>
                 <span>View Supabase SQL Schema</span>
@@ -2329,7 +2329,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowConfigModal(false)}
-                className="px-5 py-2 bg-[#1c1c1a] hover:bg-[#3d3d38] text-white font-bold text-xs rounded-xl border border-[#3d3d38] cursor-pointer"
+                className="px-5 py-2 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] text-white font-bold text-xs rounded-xl border border-[var(--sc-border-dark)] cursor-pointer"
               >
                 Close
               </button>

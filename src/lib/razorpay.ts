@@ -16,6 +16,7 @@ export interface RazorpayPaymentOptions {
   serviceOrProductName: string;
   notes?: string;
   jewelleryId?: string;
+  deliveryAddress?: string;
   itemsToDecrement?: Array<{ productId: string; quantity: number }>;
 }
 
@@ -144,6 +145,16 @@ export async function initiateRazorpayPayment(
     }
   }
 
+  // If Supabase is configured but the order could not be created, do NOT open
+  // an order-less checkout: such payments cannot be verified or tracked.
+  if (supabaseCreds.isConfigured && !razorpayOrderId) {
+    return {
+      success: false,
+      error:
+        'Could not start a secure payment session (order creation failed). Please try again in a moment.',
+    };
+  }
+
   // If the key is the placeholder/inactive test key and no real key is configured,
   // we provide an interactive test-mode payment confirmation modal to prevent the "No appropriate payment method found" error
   if (!isRealRazorpayKey(keyIdToUse)) {
@@ -175,7 +186,7 @@ export async function initiateRazorpayPayment(
         service: options.serviceOrProductName,
       },
       theme: {
-        color: '#7b5900',
+        color: '#C08A34',
         backdrop_color: 'rgba(28, 28, 26, 0.7)',
       },
       modal: {
@@ -207,6 +218,9 @@ export async function initiateRazorpayPayment(
                   customerName: options.customerName,
                   customerEmail: options.customerEmail,
                   customerPhone: options.customerPhone,
+                  serviceOrProductName: options.serviceOrProductName,
+                  jewelleryId: options.jewelleryId,
+                  deliveryAddress: options.deliveryAddress,
                   itemsToDecrement: options.itemsToDecrement,
                 },
               }
@@ -270,38 +284,38 @@ function showTestModePaymentModal(options: RazorpayPaymentOptions): Promise<Razo
     const formattedAmount = `₹${options.amount.toLocaleString('en-IN')}`;
 
     overlay.innerHTML = `
-      <div class="bg-[#fcf9f5] border border-[#d2c5b1] rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 text-[#1c1c1a] font-sans">
-        <div class="flex items-center justify-between border-b border-[#d2c5b1]/60 pb-3">
+      <div class="bg-[var(--sc-bg-soft)] border border-[var(--sc-border)] rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 text-[var(--sc-text)] font-sans">
+        <div class="flex items-center justify-between border-b border-[var(--sc-border)]/60 pb-3">
           <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-xl bg-[#7b5900] text-white flex items-center justify-center font-bold text-sm shadow-xs">
+            <div class="w-8 h-8 rounded-xl bg-[#C08A34] text-white flex items-center justify-center font-bold text-sm shadow-xs">
               ⚡
             </div>
             <div>
-              <h3 class="font-serif font-bold text-base text-[#1c1c1a]">Razorpay Sandbox Simulator</h3>
-              <p class="text-[10px] text-[#7b5900] font-semibold">Test Mode Payment Simulator</p>
+              <h3 class="font-serif font-bold text-base text-[var(--sc-text)]">Razorpay Sandbox Simulator</h3>
+              <p class="text-[10px] text-[#C08A34] font-semibold">Test Mode Payment Simulator</p>
             </div>
           </div>
-          <button id="sim-close-btn" class="w-7 h-7 rounded-full bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold text-xs flex items-center justify-center cursor-pointer">
+          <button id="sim-close-btn" class="w-7 h-7 rounded-full bg-[#2A2118] hover:bg-[#3A2F22] text-[#B8AFA3] font-bold text-xs flex items-center justify-center cursor-pointer">
             ✕
           </button>
         </div>
 
-        <div class="bg-white p-4 rounded-2xl border border-[#d2c5b1]/50 space-y-2 text-xs">
-          <div class="flex justify-between items-center text-stone-600">
+        <div class="bg-[var(--sc-surface)] p-4 rounded-2xl border border-[var(--sc-border)]/50 space-y-2 text-xs">
+          <div class="flex justify-between items-center text-[#8A7F72]">
             <span>Item / Service:</span>
-            <span class="font-bold text-stone-900 truncate max-w-[200px]">${options.serviceOrProductName}</span>
+            <span class="font-bold text-[#F5F0E8] truncate max-w-[200px]">${options.serviceOrProductName}</span>
           </div>
-          <div class="flex justify-between items-center text-stone-600">
+          <div class="flex justify-between items-center text-[#8A7F72]">
             <span>Order Reference:</span>
-            <span class="font-mono font-bold text-stone-800">${options.bookingRef}</span>
+            <span class="font-mono font-bold text-[#F5F0E8]">${options.bookingRef}</span>
           </div>
-          <div class="flex justify-between items-center text-stone-600">
+          <div class="flex justify-between items-center text-[#8A7F72]">
             <span>Customer:</span>
-            <span class="font-semibold text-stone-800">${options.customerName} (${options.customerPhone})</span>
+            <span class="font-semibold text-[#F5F0E8]">${options.customerName} (${options.customerPhone})</span>
           </div>
-          <div class="pt-2 border-t border-stone-100 flex justify-between items-center">
-            <span class="font-bold text-[#1c1c1a]">Total Amount:</span>
-            <span class="font-bold text-lg text-[#7b5900]">${formattedAmount}</span>
+          <div class="pt-2 border-t border-[#3A2F22] flex justify-between items-center">
+            <span class="font-bold text-[var(--sc-text)]">Total Amount:</span>
+            <span class="font-bold text-lg text-[#C08A34]">${formattedAmount}</span>
           </div>
         </div>
 
@@ -310,12 +324,12 @@ function showTestModePaymentModal(options: RazorpayPaymentOptions): Promise<Razo
         </div>
 
         <div class="space-y-2 pt-1">
-          <button id="sim-success-btn" class="w-full py-3.5 bg-[#7b5900] hover:bg-[#c79a3b] text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-99">
+          <button id="sim-success-btn" class="w-full py-3.5 bg-[#C08A34] hover:bg-[#E0B45F] text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-99">
             <span>✓</span>
             <span>SIMULATE SUCCESSFUL PAYMENT (${formattedAmount})</span>
           </button>
           
-          <button id="sim-cancel-btn" class="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer">
+          <button id="sim-cancel-btn" class="w-full py-2.5 bg-[#2A2118] hover:bg-[#3A2F22] text-[#B8AFA3] font-semibold text-xs rounded-xl transition-colors cursor-pointer">
             Cancel & Return
           </button>
         </div>

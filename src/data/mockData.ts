@@ -111,7 +111,7 @@ export const INITIAL_HENNA_BOOKINGS: HennaBooking[] = [
     clientEmail: 'divya@example.com',
     phone: '+91 98401 23456',
     wa: '+91 98401 23456',
-    specialRequests: 'Subi Izhai Kundan Choker Set trial appointment for Muhurtham look.',
+    specialRequests: 'Kundan Choker Set trial appointment for Muhurtham look.',
     artist: 'Jewellery Stylist',
     status: 'Confirmed',
     type: 'jewellery'
@@ -183,7 +183,7 @@ export const SERVICE_PACKAGES: ServicePackage[] = [
     image: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&q=80&w=600'
   },
 
-  // 2. Subi Izhai Jewellery Rental & Sale
+  // 2. Jewellery Rental & Sale
   {
     id: 'jewellery-bridal-rental',
     category: 'Jewellery Rental & Sale',

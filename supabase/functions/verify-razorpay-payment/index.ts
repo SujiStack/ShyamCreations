@@ -63,6 +63,9 @@ serve(async (req) => {
       customerName,
       customerEmail,
       customerPhone,
+      serviceOrProductName,
+      jewelleryId,
+      deliveryAddress,
       itemsToDecrement,
     } = body;
 
@@ -93,7 +96,29 @@ serve(async (req) => {
     if (supabaseUrl && supabaseServiceKey) {
       const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-      // 2a. Update or insert into payments table
+      // 2a. Log the verified payment into the audit trail (idempotent)
+      try {
+        await supabaseAdmin.from("payment_events").upsert(
+          [
+            {
+              event_type: "client.signature_verified",
+              entity_id: razorpay_payment_id,
+              razorpay_order_id,
+              razorpay_payment_id,
+              booking_ref: bookingRef,
+              status: "PAID",
+              amount: amount || null,
+              method: "Razorpay (client verified)",
+              raw_payload: { razorpay_order_id, razorpay_payment_id, bookingRef, orderType },
+            },
+          ],
+          { onConflict: "entity_id,event_type" }
+        );
+      } catch (eLog) {
+        console.warn("payment_events log (verify) failed:", eLog);
+      }
+
+      // 2b. Update or insert into payments table
       try {
         await supabaseAdmin.from("payments").upsert(
           [
@@ -119,36 +144,106 @@ serve(async (req) => {
         console.warn("Could not upsert into payments table:", pErr);
       }
 
-      // 2b. Update bookings table (for Henna bookings)
+      const fmtINR = (v: any) => `₹${Number(v || 0).toLocaleString("en-IN")}`;
+
+      // 2c. Henna booking — confirm it, or register it if the client never saved it
       if (orderType === "henna" || !orderType) {
-        await supabaseAdmin
+        const existingBooking = await supabaseAdmin
           .from("bookings")
-          .update({
-            status: "Confirmed",
-            // If payment columns exist, these will update; otherwise ignored by supabase
-          })
-          .eq("ref", bookingRef);
+          .select("id")
+          .eq("ref", bookingRef)
+          .maybeSingle();
+        if (existingBooking.data) {
+          await supabaseAdmin.from("bookings").update({ status: "Confirmed" }).eq("ref", bookingRef);
+        } else {
+          await supabaseAdmin.from("bookings").insert([
+            {
+              ref: bookingRef,
+              name: customerName || "Client",
+              phone: customerPhone || "",
+              wa: customerPhone || "",
+              email: customerEmail || "",
+              service: serviceOrProductName || "Henna Booking",
+              notes: deliveryAddress || "",
+              date: new Date().toISOString().split("T")[0],
+              slot: "Confirmed via Razorpay",
+              status: "Confirmed",
+            },
+          ]);
+        }
       }
 
-      // 2c. Update jewellery_customers / jewellery_bookings table
+      // 2d. Jewellery orders — confirm them, or register if the client never saved them
       if (orderType === "jewellery_single" || orderType === "jewellery_bag") {
-        await supabaseAdmin
+        const existingCustomer = await supabaseAdmin
           .from("jewellery_customers")
-          .update({
-            payment_status: "Paid",
-            order_status: "Confirmed",
-            upi_transaction_id: razorpay_payment_id,
-          })
-          .eq("order_ref", bookingRef);
+          .select("id")
+          .eq("order_ref", bookingRef)
+          .maybeSingle();
+        if (existingCustomer.data) {
+          await supabaseAdmin
+            .from("jewellery_customers")
+            .update({
+              payment_status: "Paid",
+              order_status: "Confirmed",
+              upi_transaction_id: razorpay_payment_id,
+            })
+            .eq("order_ref", bookingRef);
+        } else {
+          await supabaseAdmin.from("jewellery_customers").insert([
+            {
+              order_ref: bookingRef,
+              customer_name: customerName || "Client",
+              phone: customerPhone || "",
+              whatsapp: customerPhone || "",
+              email: customerEmail || "",
+              delivery_address: deliveryAddress || "Studio Pickup",
+              product_name: serviceOrProductName || "Jewellery Order",
+              jewellery_id: jewelleryId || "online-order",
+              item_price: fmtINR(amount),
+              shipping_fee: "₹50",
+              total_amount: fmtINR(amount),
+              payment_method: "Razorpay (UPI / Card / NetBanking)",
+              upi_transaction_id: razorpay_payment_id,
+              payment_status: "Paid",
+              order_status: "Confirmed",
+              notes: "Auto-registered by Razorpay payment verification",
+            },
+          ]);
+        }
       } else if (orderType === "jewellery_rental") {
-        await supabaseAdmin
+        const existingRental = await supabaseAdmin
           .from("jewellery_bookings")
-          .update({
-            payment_status: "Paid",
-            status: "Confirmed",
-            transaction_id: razorpay_payment_id,
-          })
-          .eq("booking_ref", bookingRef);
+          .select("id")
+          .eq("booking_ref", bookingRef)
+          .maybeSingle();
+        if (existingRental.data) {
+          await supabaseAdmin
+            .from("jewellery_bookings")
+            .update({
+              payment_status: "Paid",
+              status: "Confirmed",
+              transaction_id: razorpay_payment_id,
+            })
+            .eq("booking_ref", bookingRef);
+        } else {
+          await supabaseAdmin.from("jewellery_bookings").insert([
+            {
+              booking_ref: bookingRef,
+              client_name: customerName || "Client",
+              phone: customerPhone || "",
+              email: customerEmail || "",
+              product_name: serviceOrProductName || "Jewellery Rental",
+              total_price: fmtINR(amount),
+              location: deliveryAddress || "Studio Pickup",
+              payment_status: "Paid",
+              payment_method: "Razorpay (UPI / Card / NetBanking)",
+              transaction_id: razorpay_payment_id,
+              status: "Confirmed",
+              notes: "Auto-registered by Razorpay payment verification",
+            },
+          ]);
+        }
       }
 
       // 2d. Decrement inventory stock safely if requested

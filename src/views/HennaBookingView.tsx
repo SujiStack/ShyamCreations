@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ViewMode, HennaBooking, CustomerAccount } from '../types';
+import { ViewMode, HennaBooking, CustomerAccount, PendingAuthAction } from '../types';
 import { SERVICE_PACKAGES, VISIONARY_ARTISTS, STUDIO_INFO } from '../data/mockData';
 import { sendBookingConfirmationEmails, EmailSendResult } from '../lib/emailService';
 import { insertSupabaseJewelleryBooking } from '../lib/supabaseService';
@@ -72,6 +72,7 @@ interface HennaBookingViewProps {
   onAddBooking: (booking: HennaBooking) => Promise<{ success: boolean; isConfigured: boolean; error?: string }> | void;
   initialCategory?: ServiceCategoryKey;
   customerUser?: CustomerAccount | null;
+  onRequireAuth?: (action: PendingAuthAction) => void;
 }
 
 export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
@@ -79,9 +80,10 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
   onAddBooking,
   initialCategory = 'mehendi',
   customerUser = null,
+  onRequireAuth,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategoryKey>(initialCategory);
-  
+
   // Mehendi Form State
   const [clientName, setClientName] = useState<string>(customerUser?.name || 'Priya Sharma');
   const [clientPhone, setClientPhone] = useState<string>(customerUser?.phone || '9876543210');
@@ -127,40 +129,28 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
   const [nailAddons, setNailAddons] = useState<string>('3D Floral Acrylic & Chrome Foil');
 
   // Payment State
-  const [paymentGatewayMode, setPaymentGatewayMode] = useState<'razorpay' | 'manual_upi'>('razorpay');
   const [paymentOption, setPaymentOption] = useState<'advance' | 'full'>('advance');
-  const [paymentUtr, setPaymentUtr] = useState<string>('');
-  const [isVerifyingPayment, setIsVerifyingPayment] = useState<boolean>(false);
-  const [paymentVerifiedSuccess, setPaymentVerifiedSuccess] = useState<boolean>(false);
 
-  const handleClipboardAutoPaste = async () => {
-    try {
-      if (navigator.clipboard && navigator.clipboard.readText) {
-        const text = await navigator.clipboard.readText();
-        const digitsOnly = text.replace(/\D/g, '');
-        if (digitsOnly.length >= 6) {
-          const extracted12 = digitsOnly.slice(-12);
-          setPaymentUtr(extracted12);
-          setPaymentVerifiedSuccess(true);
-          setFormError(null);
-        } else if (text.trim()) {
-          setPaymentUtr(text.trim());
-          if (text.trim().length >= 6) {
-            setPaymentVerifiedSuccess(true);
-            setFormError(null);
-          }
-        }
-      }
-    } catch (err) {
-      console.log('Clipboard access denied or unsupported:', err);
-    }
-  };
+  const [bookingSuccess, setBookingSuccess] = useState<boolean>(false);
+  const [generatedRef, setGeneratedRef] = useState<string>('');
+  const [saveStatus, setSaveStatus] = useState<{ isConfigured: boolean; success: boolean; error?: string } | null>(null);
+  const [confirmedBookingCard, setConfirmedBookingCard] = useState<HennaBooking | null>(null);
+  const [emailStatus, setEmailStatus] = useState<EmailSendResult | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const handleRazorpayBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    // Form Validations
+    if (!customerUser) {
+      if (onRequireAuth) {
+        onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: selectedCategory });
+      }
+      setFormError('Please sign in or register an account before booking your appointment.');
+      return;
+    }
+
     if (!clientName.trim()) {
       setFormError('Please enter your Full Name.');
       return;
@@ -234,6 +224,7 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
         customerPhone: clientPhone.trim(),
         serviceOrProductName: `${serviceTitle} (${paymentOption === 'advance' ? 'Slot Deposit' : 'Full Payment'})`,
         notes: `Date: ${selectedDate}, Slot: ${selectedTime}, Location: ${location}`,
+        deliveryAddress: location,
       });
 
       if (!paymentResult.success) {
@@ -275,7 +266,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
       setGeneratedRef(refCode);
       setBookingSuccess(true);
 
-      // If jewellery category, also save directly to 'jewellery_bookings' table
       if (selectedCategory === 'jewellery') {
         await insertSupabaseJewelleryBooking({
           bookingRef: refCode,
@@ -297,7 +287,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
         });
       }
 
-      // 1. Save locally and to Supabase
       const result = await onAddBooking(newBooking);
       if (result) {
         setSaveStatus(result);
@@ -305,7 +294,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
         setSaveStatus({ isConfigured: false, success: false });
       }
 
-      // 2. Dispatch Confirmation Email to Customer & Admin via EmailJS
       const emailRes = await sendBookingConfirmationEmails({
         ref: refCode,
         clientName: clientName,
@@ -336,14 +324,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
     }
   };
 
-  const [bookingSuccess, setBookingSuccess] = useState<boolean>(false);
-  const [generatedRef, setGeneratedRef] = useState<string>('');
-  const [saveStatus, setSaveStatus] = useState<{ isConfigured: boolean; success: boolean; error?: string } | null>(null);
-  const [confirmedBookingCard, setConfirmedBookingCard] = useState<HennaBooking | null>(null);
-  const [emailStatus, setEmailStatus] = useState<EmailSendResult | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
   useEffect(() => {
     if (initialCategory) {
       setSelectedCategory(initialCategory);
@@ -361,164 +341,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
     return p.category === 'Bridal & Occasion Mehendi';
   });
 
-  const handleBookingSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    // Strict validation
-    if (!clientName.trim()) {
-      setFormError('Please enter your Full Name.');
-      return;
-    }
-    if (!clientPhone.trim()) {
-      setFormError('Please enter your Phone Number.');
-      return;
-    }
-    if (!clientEmail.trim() || !clientEmail.includes('@') || !clientEmail.includes('.')) {
-      setFormError('Please enter a valid Email Address.');
-      return;
-    }
-    if (!occasion || occasion === 'Select Occasion') {
-      setFormError('Please select an Occasion.');
-      return;
-    }
-    if (!selectedDate) {
-      setFormError('Please select a Preferred Date.');
-      return;
-    }
-    if (!selectedTime) {
-      setFormError('Please select a Time Slot.');
-      return;
-    }
-    if (selectedCategory === 'mehendi' && !selectedMehendiService) {
-      setFormError('Please select a Mehendi Service.');
-      return;
-    }
-    if (selectedCategory !== 'mehendi' && !selectedPackage) {
-      setFormError('Please select a Service Package.');
-      return;
-    }
-
-    // MANDATORY PAYMENT CHECK:
-    if (!paymentUtr.trim() || paymentUtr.trim().length < 6) {
-      setFormError('Mandatory Payment: Please enter your 12-digit UPI Transaction ID from your payment app (GPay / PhonePe / Paytm) receipt to confirm your slot.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    const refCode = `SC-${Date.now().toString().slice(-6)}`;
-
-    let serviceTitle = 'Bridal Service';
-    let servicePriceVal = '₹200';
-    let compiledNotes = additionalNotes;
-
-    if (selectedCategory === 'mehendi') {
-      const mehendiObj = MEHENDI_SERVICES.find((s) => s.id === selectedMehendiService);
-      serviceTitle = mehendiObj ? `Mehendi: ${mehendiObj.title} (${mehendiObj.price})` : 'Mehendi Artistry';
-      servicePriceVal = mehendiObj ? mehendiObj.price : '₹200';
-      const specs = `Occasion: ${occasion} | Duration: ${mehendiObj?.duration || 'Standard'}`;
-      compiledNotes = additionalNotes ? `${specs}\nNotes: ${additionalNotes}` : specs;
-    } else {
-      const pkg = SERVICE_PACKAGES.find((p) => p.id === selectedPackage);
-      serviceTitle = pkg ? pkg.title : 'Jewellery Rental & Trial';
-      servicePriceVal = pkg ? pkg.price : '₹500';
-      const specs = `[Jewellery Specs] Set: ${jewellerySetType} | Event: ${jewelleryEventType} | Duration: ${jewelleryRentalDays} | ID: ${jewelleryIdVerify}`;
-      compiledNotes = additionalNotes ? `${specs}\nNotes: ${additionalNotes}` : specs;
-    }
-
-    const isBridalService = selectedMehendiService.includes('bridal');
-    const tokenAmount = isBridalService ? '₹500' : '₹100';
-
-    const payStatusStr = paymentOption === 'advance' ? `Advance Paid (${tokenAmount})` : `Paid in Full (${servicePriceVal})`;
-    const payAmtStr = paymentOption === 'advance' ? `${tokenAmount} Deposit` : servicePriceVal;
-    const payMethodStr = 'UPI (Google Pay / PhonePe / Paytm)';
-
-    // Append payment log to notes
-    const paymentSpecNotes = `[Payment Info] Status: ${payStatusStr} | Amount: ${payAmtStr} | Method: ${payMethodStr} | UTR: ${paymentUtr.trim() || 'N/A'}`;
-    compiledNotes = compiledNotes ? `${compiledNotes}\n${paymentSpecNotes}` : paymentSpecNotes;
-
-    const newBooking: HennaBooking = {
-      id: `sb-${Date.now()}`,
-      ref: refCode,
-      serviceName: serviceTitle,
-      serviceCategory: selectedCategory === 'mehendi' ? 'Bridal & Occasion Mehendi' : 'Jewellery Rental & Sale',
-      date: selectedDate,
-      timeSlot: selectedTime,
-      location: location,
-      clientName: clientName,
-      clientEmail: clientEmail,
-      phone: clientPhone,
-      wa: sameAsPhone ? clientPhone : clientWa,
-      specialRequests: compiledNotes,
-      artist: selectedCategory === 'mehendi' ? 'Shyam Master Artist' : 'Jewellery Concierge',
-      status: 'Confirmed',
-      type: selectedCategory === 'mehendi' ? 'henna' : 'jewellery',
-      paymentStatus: paymentOption === 'advance' ? 'Advance Paid' : 'Paid',
-      paymentAmount: payAmtStr,
-      paymentMethod: payMethodStr,
-      transactionId: paymentUtr.trim() || `UPI-TXN-${Date.now().toString().slice(-6)}`,
-    };
-
-    setGeneratedRef(refCode);
-    setBookingSuccess(true);
-
-    // If jewellery category, also save directly to 'jewellery_bookings' table
-    if (selectedCategory === 'jewellery') {
-      await insertSupabaseJewelleryBooking({
-        bookingRef: refCode,
-        clientName: clientName,
-        phone: clientPhone,
-        email: clientEmail,
-        productName: serviceTitle,
-        jewelleryId: jewelleryIdVerify || 'PACKAGE-BOOKING',
-        bookingType: 'Package',
-        startDate: selectedDate,
-        endDate: selectedDate,
-        totalPrice: servicePriceVal,
-        location: location,
-        paymentStatus: paymentOption === 'advance' ? 'Advance Paid' : 'Paid',
-        paymentMethod: payMethodStr,
-        transactionId: paymentUtr.trim(),
-        status: 'Confirmed',
-        notes: compiledNotes,
-      });
-    }
-
-    // 1. Save locally and to Supabase
-    const result = await onAddBooking(newBooking);
-    if (result) {
-      setSaveStatus(result);
-    } else {
-      setSaveStatus({ isConfigured: false, success: false });
-    }
-
-    // 2. Dispatch Confirmation Email to Customer & Admin via EmailJS
-    const emailRes = await sendBookingConfirmationEmails({
-      ref: refCode,
-      clientName: clientName,
-      clientEmail: clientEmail,
-      clientPhone: clientPhone,
-      clientWa: sameAsPhone ? clientPhone : clientWa,
-      serviceName: serviceTitle,
-      serviceCategory: selectedCategory === 'mehendi' ? 'Bridal & Occasion Mehendi' : 'Jewellery Rental & Sale',
-      date: selectedDate,
-      timeSlot: selectedTime,
-      location: location,
-      specialRequests: compiledNotes,
-      paymentStatus: payStatusStr,
-      paymentAmount: payAmtStr,
-      paymentMethod: payMethodStr,
-      transactionId: paymentUtr.trim() || 'UPI-REF-PENDING',
-    });
-
-    // 3. EmailJS automatically handles email confirmation dispatch for both customer and admin
-    setEmailStatus(emailRes);
-    setConfirmedBookingCard(newBooking);
-    setIsSubmitting(false);
-
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   if (confirmedBookingCard) {
     const rawCustWa = (confirmedBookingCard.wa || confirmedBookingCard.phone || '').replace(/\D/g, '');
     const custWaFormatted = rawCustWa.length === 10 ? `91${rawCustWa}` : (rawCustWa || '919363710342');
@@ -526,10 +348,9 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
-        <div className="bg-[#fdfaf6] text-[#1c1c1a] w-full max-w-md rounded-[32px] overflow-hidden border-2 border-[#2a0e2a] shadow-2xl relative my-auto">
-          {/* Gold Header Banner matching screenshot 1 */}
-          <div className="bg-gradient-to-b from-[#c59a3e] to-[#b3852b] p-6 text-center text-white relative shadow-md">
-            {/* Close Button top right */}
+        <div className="bg-[var(--sc-surface)] text-[var(--sc-text)] w-full max-w-md rounded-[32px] overflow-hidden border-2 border-[var(--sc-border)] shadow-2xl relative my-auto">
+          {/* Emerald Header Banner */}
+          <div className="bg-gradient-to-b from-[var(--sc-emerald)] to-[var(--sc-emerald-dark)] p-6 text-center text-white relative shadow-md">
             <button
               onClick={() => {
                 setConfirmedBookingCard(null);
@@ -541,7 +362,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
               <span className="material-symbols-outlined text-sm">close</span>
             </button>
 
-            {/* Sparkle Icon */}
             <div className="text-xl mb-1 text-white">✦</div>
             <h2 className="font-serif font-bold text-2xl md:text-3xl text-white tracking-wide">
               Booking Confirmed!
@@ -553,55 +373,52 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
           {/* Modal Content Body */}
           <div className="p-6 text-center space-y-4">
-            {/* Confetti Emoji */}
             <div className="text-3xl">🎊</div>
 
-            {/* Greeting Text */}
             <p className="text-sm text-[#4a4235] leading-relaxed">
-              Thank you, <strong className="font-bold text-[#1c1c1a]">{confirmedBookingCard.clientName}</strong>! We'll contact you on <strong className="font-bold text-[#1c1c1a]">{confirmedBookingCard.phone}</strong> shortly.
+              Thank you, <strong className="font-bold text-[var(--sc-text)]">{confirmedBookingCard.clientName}</strong>! We'll contact you on <strong className="font-bold text-[var(--sc-text)]">{confirmedBookingCard.phone}</strong> shortly.
             </p>
 
-            {/* Dark Reference Pill */}
             <div>
-              <span className="bg-[#2a0e2a] text-[#f5d796] font-mono text-sm px-6 py-2 rounded-full font-bold tracking-widest inline-block shadow-sm">
+              <span className="bg-[var(--sc-emerald-deep)] text-[#F0E0BF] font-mono text-sm px-6 py-2 rounded-full font-bold tracking-widest inline-block shadow-sm">
                 {confirmedBookingCard.ref}
               </span>
             </div>
 
             {/* Inner Details Table */}
-            <div className="bg-white rounded-2xl border border-[#e8dccb] p-4 text-left divide-y divide-[#f2e8db] space-y-2.5 shadow-2xs text-xs">
+            <div className="bg-[var(--sc-surface)] rounded-2xl border border-[var(--sc-border)] p-4 text-left divide-y divide-[#f2e8db] space-y-2.5 shadow-2xs text-xs">
               <div className="flex items-center justify-between pt-1">
-                <span className="font-bold text-[#807262] text-[10px] uppercase tracking-wider">DATE</span>
-                <span className="font-semibold text-[#1c1c1a]">{confirmedBookingCard.date}</span>
+                <span className="font-bold text-[#8A7F72] text-[10px] uppercase tracking-wider">DATE</span>
+                <span className="font-semibold text-[var(--sc-text)]">{confirmedBookingCard.date}</span>
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <span className="font-bold text-[#807262] text-[10px] uppercase tracking-wider">TIME</span>
-                <span className="font-semibold text-[#1c1c1a]">{confirmedBookingCard.timeSlot}</span>
+                <span className="font-bold text-[#8A7F72] text-[10px] uppercase tracking-wider">TIME</span>
+                <span className="font-semibold text-[var(--sc-text)]">{confirmedBookingCard.timeSlot}</span>
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <span className="font-bold text-[#807262] text-[10px] uppercase tracking-wider">SERVICE</span>
-                <span className="font-semibold text-[#1c1c1a] flex items-center gap-1">
+                <span className="font-bold text-[#8A7F72] text-[10px] uppercase tracking-wider">SERVICE</span>
+                <span className="font-semibold text-[var(--sc-text)] flex items-center gap-1">
                   <span>🌸</span>
                   <span>{confirmedBookingCard.serviceName}</span>
                 </span>
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <span className="font-bold text-[#807262] text-[10px] uppercase tracking-wider">OCCASION</span>
-                <span className="font-semibold text-[#1c1c1a]">
+                <span className="font-bold text-[#8A7F72] text-[10px] uppercase tracking-wider">OCCASION</span>
+                <span className="font-semibold text-[var(--sc-text)]">
                   {selectedCategory === 'mehendi' ? 'Bridal & Occasion Mehendi' : 'Jewellery Service'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <span className="font-bold text-[#807262] text-[10px] uppercase tracking-wider">PHONE</span>
-                <span className="font-semibold text-[#1c1c1a]">{confirmedBookingCard.phone}</span>
+                <span className="font-bold text-[#8A7F72] text-[10px] uppercase tracking-wider">PHONE</span>
+                <span className="font-semibold text-[var(--sc-text)]">{confirmedBookingCard.phone}</span>
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <span className="font-bold text-[#807262] text-[10px] uppercase tracking-wider">PAYMENT STATUS</span>
+                <span className="font-bold text-[#8A7F72] text-[10px] uppercase tracking-wider">PAYMENT STATUS</span>
                 <span className="font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
                   ✓ {confirmedBookingCard.paymentStatus || 'Advance Paid'} ({confirmedBookingCard.paymentAmount || '₹100'})
                 </span>
@@ -609,8 +426,8 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
               {confirmedBookingCard.transactionId && (
                 <div className="flex items-center justify-between pt-2">
-                  <span className="font-bold text-[#807262] text-[10px] uppercase tracking-wider">UPI TRANSACTION ID</span>
-                  <span className="font-mono text-[10px] font-semibold text-[#1c1c1a] bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+                  <span className="font-bold text-[#8A7F72] text-[10px] uppercase tracking-wider">PAYMENT ID</span>
+                  <span className="font-mono text-[10px] font-semibold text-[var(--sc-text)] bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
                     {confirmedBookingCard.transactionId}
                   </span>
                 </div>
@@ -655,24 +472,22 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
             {/* Action Buttons */}
             <div className="space-y-2.5 pt-2">
-              {/* Green WhatsApp Button */}
               <a
                 href={`https://wa.me/${custWaFormatted}?text=${encodeURIComponent(custMessage)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="w-full py-3.5 px-6 bg-[#25d366] hover:bg-[#1ebd59] text-white font-bold text-sm rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                className="w-full py-3.5 px-6 bg-[#2C6B4F] hover:bg-[#1F4D3A] text-white font-bold text-sm rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
               >
                 <span>💬</span>
                 <span>Chat with us on WhatsApp</span>
               </a>
 
-              {/* Dark Purple Book Another Button */}
               <button
                 onClick={() => {
                   setConfirmedBookingCard(null);
                   setEmailStatus(null);
                 }}
-                className="w-full py-3.5 px-6 bg-[#2a0e2a] hover:bg-[#3d163d] text-white font-bold text-sm rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                className="w-full py-3.5 px-6 bg-[var(--sc-emerald-deep)] hover:bg-[var(--sc-emerald-dark)] text-white font-bold text-sm rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
               >
                 <span>Book Another Appointment</span>
               </button>
@@ -684,42 +499,67 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
   }
 
   return (
-    <div className="pt-20 pb-20 px-3 md:px-8 max-w-5xl mx-auto space-y-8">
-      {/* MEHENDI APPOINTMENT FORM - MATCHING ROYAL GOLD TEMPLATE THEME */}
-      <div className="bg-white text-[#1c1c1a] rounded-3xl overflow-hidden border border-[#d2c5b1]/40 lux-card-shadow">
+    <div className="pt-20 pb-8 px-2 sm:px-4 md:px-8 max-w-5xl mx-auto space-y-6 sm:space-y-8">
+      {/* MEHENDI APPOINTMENT FORM */}
+      <div className="bg-[var(--sc-surface)] text-[var(--sc-text)] rounded-3xl overflow-hidden border border-[var(--sc-border)] lux-card-shadow">
         {/* Header Banner */}
-        <div className="text-center py-10 px-6 space-y-2 bg-[#fcf9f5] border-b border-[#d2c5b1]/30">
-          <p className="text-[10px] md:text-xs font-bold tracking-[0.25em] text-[#7b5900] uppercase">
+        <div className="text-center py-10 px-6 space-y-2 bg-[var(--sc-bg-soft)] border-b border-[var(--sc-border)]/60">
+          <p className="text-[10px] md:text-xs font-bold tracking-[0.25em] text-[var(--sc-emerald-dark)] uppercase">
             ✦ RESERVE YOUR MEHENDI SLOT ✦
           </p>
-          <h1 className="font-serif text-3xl md:text-4xl text-[#1c1c1a] font-bold tracking-tight">
+          <h1 className="font-serif text-3xl md:text-4xl text-[var(--sc-text)] font-bold tracking-tight">
             Book Mehendi Appointment
           </h1>
-          <p className="text-xs md:text-sm text-[#5c5446] max-w-md mx-auto">
+          <p className="text-xs md:text-sm text-[var(--sc-text-dim)] max-w-md mx-auto">
             Select your design length, date, and client details to confirm your slot.
           </p>
         </div>
 
           {/* Form Main Body */}
-          <div className="p-6 md:p-10 bg-white text-[#1c1c1a]">
+          <div className="p-4 sm:p-6 md:p-10 bg-[var(--sc-surface)] text-[var(--sc-text)]">
+            {!customerUser && (
+              <div className="mb-8 p-4 bg-[var(--sc-bg-soft)] border border-[var(--sc-emerald)] rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-xl">lock_open</span>
+                  </div>
+                  <div>
+                    <h4 className="font-serif font-bold text-sm text-[var(--sc-text)]">Client Sign-in Required to Book</h4>
+                    <p className="text-xs text-[var(--sc-text-dim)]">Please sign in or create an account to reserve your slot and receive confirmation updates.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onRequireAuth) {
+                      onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: selectedCategory });
+                    }
+                  }}
+                  className="px-5 py-2.5 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald-light)] text-white font-bold rounded-xl text-xs tracking-wider uppercase whitespace-nowrap transition-all shadow-md cursor-pointer shrink-0"
+                >
+                  Sign In / Sign Up
+                </button>
+              </div>
+            )}
+
             {bookingSuccess && (
-              <div className="p-5 mb-8 bg-[#fcf9f5] text-[#7b5900] border border-[#c79a3b] rounded-2xl text-xs font-bold space-y-2 animate-in fade-in duration-300">
-                <div className="flex items-center gap-2 text-sm text-[#1c1c1a]">
+              <div className="p-5 mb-8 bg-[var(--sc-bg-soft)] text-[var(--sc-emerald-dark)] border border-[var(--sc-emerald)] rounded-2xl text-xs font-bold space-y-2 animate-in fade-in duration-300">
+                <div className="flex items-center gap-2 text-sm text-[var(--sc-text)]">
                   <span className="material-symbols-outlined text-green-600">check_circle</span>
                   <span>Appointment Confirmed!</span>
                 </div>
-                <p>Reference Code: <span className="bg-[#7b5900] text-white px-2 py-0.5 rounded font-mono font-bold">{generatedRef}</span></p>
+                <p>Reference Code: <span className="bg-[var(--sc-emerald)] text-white px-2 py-0.5 rounded font-mono font-bold">{generatedRef}</span></p>
 
                 <p className="text-[11px] text-green-700 bg-green-50 p-2 rounded border border-green-200">
                   ✓ Your appointment details have been recorded successfully in our studio system.
                 </p>
 
-                <p className="text-[11px] text-[#5c5446] pt-1">Redirecting to My Bookings portal...</p>
+                <p className="text-[11px] text-[var(--sc-text-dim)] pt-1">Redirecting to My Bookings portal...</p>
               </div>
             )}
 
-            <form onSubmit={handleBookingSubmit} className="space-y-10">
-              
+            <form onSubmit={handleRazorpayBooking} className="space-y-6 sm:space-y-8 md:space-y-10">
+
               {/* Form Validation Error Banner */}
               {formError && (
                 <div className="p-4 bg-red-50 text-red-900 border border-red-200 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs">
@@ -728,21 +568,21 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                 </div>
               )}
 
-              {/* SECTION 1: PERSONAL DETAILS */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full bg-[#7b5900] text-white font-bold text-xs flex items-center justify-center shrink-0">
-                    1
-                  </div>
-                  <h2 className="font-serif font-bold text-xl md:text-2xl text-[#1c1c1a]">
-                    Personal Details
-                  </h2>
-                </div>
+               {/* SECTION 1: PERSONAL DETAILS */}
+               <div className="space-y-4 sm:space-y-6">
+                 <div className="flex items-center gap-3">
+                   <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                     1
+                   </div>
+                   <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
+                     Personal Details
+                   </h2>
+                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                   {/* Full Name */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[#1c1c1a]">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
                       FULL NAME *
                     </label>
                     <input
@@ -751,13 +591,13 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                       value={clientName}
                       onChange={(e) => setClientName(e.target.value)}
                       placeholder="Priya Sharma"
-                      className="w-full px-4 py-3.5 rounded-xl bg-[#f6f3ef] border border-[#d2c5b1]/40 text-xs font-medium text-[#1c1c1a] focus:outline-none focus:border-[#7b5900] focus:bg-white shadow-xs"
+                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
                     />
                   </div>
 
                   {/* Phone Number */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[#1c1c1a]">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
                       PHONE NUMBER *
                     </label>
                     <input
@@ -766,13 +606,13 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                       value={clientPhone}
                       onChange={(e) => setClientPhone(e.target.value)}
                       placeholder="9876543210"
-                      className="w-full px-4 py-3.5 rounded-xl bg-[#f6f3ef] border border-[#d2c5b1]/40 text-xs font-medium text-[#1c1c1a] focus:outline-none focus:border-[#7b5900] focus:bg-white shadow-xs"
+                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
                     />
                   </div>
 
                   {/* Email Address */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[#1c1c1a]">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
                       EMAIL ADDRESS *
                     </label>
                     <input
@@ -781,22 +621,22 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                       value={clientEmail}
                       onChange={(e) => setClientEmail(e.target.value)}
                       placeholder="priya@example.com"
-                      className="w-full px-4 py-3.5 rounded-xl bg-[#f6f3ef] border border-[#d2c5b1]/40 text-xs font-medium text-[#1c1c1a] focus:outline-none focus:border-[#7b5900] focus:bg-white shadow-xs"
+                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
                     />
                   </div>
 
                   {/* WhatsApp Number */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center">
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-[#1c1c1a]">
-                        WHATSAPP NUMBER <span className="text-[10px] font-normal text-[#5c5446]">(if different)</span>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
+                        WHATSAPP NUMBER <span className="text-[10px] font-normal text-[var(--sc-text-dimmer)]">(if different)</span>
                       </label>
-                      <label className="flex items-center gap-1.5 text-[11px] text-[#1c1c1a] cursor-pointer font-medium">
+                      <label className="flex items-center gap-1.5 text-[11px] text-[var(--sc-text)] cursor-pointer font-medium">
                         <input
                           type="checkbox"
                           checked={sameAsPhone}
                           onChange={(e) => setSameAsPhone(e.target.checked)}
-                          className="rounded text-[#7b5900] focus:ring-[#7b5900]"
+                          className="rounded text-[var(--sc-emerald)] focus:ring-[var(--sc-emerald)]"
                         />
                         <span>Same as phone</span>
                       </label>
@@ -807,21 +647,21 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                       disabled={sameAsPhone}
                       onChange={(e) => setClientWa(e.target.value)}
                       placeholder="Same as phone"
-                      className={`w-full px-4 py-3.5 rounded-xl border text-xs font-medium text-[#1c1c1a] focus:outline-none focus:border-[#7b5900] shadow-xs ${
-                        sameAsPhone ? 'bg-[#e5e2de] border-[#d2c5b1] text-[#807665]' : 'bg-[#f6f3ef] border-[#d2c5b1]/40 focus:bg-white'
+                      className={`w-full px-4 py-3.5 rounded-xl border text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] shadow-xs ${
+                        sameAsPhone ? 'bg-[var(--sc-accent-warm)] border-[var(--sc-border)] text-[var(--sc-text-dimmer)]' : 'bg-[var(--sc-accent-warm)] border-[var(--sc-border)] focus:bg-[var(--sc-surface)]'
                       }`}
                     />
                   </div>
 
                   {/* Occasion Dropdown */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[#1c1c1a]">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
                       OCCASION *
                     </label>
                     <select
                       value={occasion}
                       onChange={(e) => setOccasion(e.target.value)}
-                      className="w-full px-4 py-3.5 rounded-xl bg-[#f6f3ef] border border-[#d2c5b1]/40 text-xs font-medium text-[#1c1c1a] focus:outline-none focus:border-[#7b5900] focus:bg-white shadow-xs cursor-pointer"
+                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs cursor-pointer"
                     >
                       <option value="Select Occasion">Select Occasion</option>
                       <option value="Bridal / Wedding">Bridal / Wedding Ceremony</option>
@@ -835,7 +675,7 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
                   {/* Preferred Date */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[#1c1c1a]">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
                       PREFERRED DATE *
                     </label>
                     <input
@@ -843,13 +683,13 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                       required
                       value={selectedDate}
                       onChange={(e) => setSelectedDate(e.target.value)}
-                      className="w-full px-4 py-3.5 rounded-xl bg-[#f6f3ef] border border-[#d2c5b1]/40 text-xs font-medium text-[#1c1c1a] focus:outline-none focus:border-[#7b5900] focus:bg-white shadow-xs cursor-pointer"
+                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs cursor-pointer"
                     />
                   </div>
 
-                  {/* Preferred Time Slot (Morning / Evening) */}
+                  {/* Preferred Time Slot */}
                   <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[#1c1c1a]">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
                       TIME SLOT (MORNING / EVENING) *
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -858,15 +698,15 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                         onClick={() => setSelectedTime('Morning Slot (09:00 AM - 01:00 PM)')}
                         className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                           selectedTime.includes('Morning')
-                            ? 'bg-[#7b5900] text-white border-[#7b5900] shadow-sm'
-                            : 'bg-[#f6f3ef] text-[#1c1c1a] border-[#d2c5b1]/40 hover:border-[#7b5900]'
+                            ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)] shadow-sm'
+                            : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text)] border-[var(--sc-border)] hover:border-[var(--sc-emerald)]'
                         }`}
                       >
                         <div className="flex items-center gap-3">
                           <span className="text-2xl">🌅</span>
                           <div>
                             <div className="font-bold text-xs">Morning Slot</div>
-                            <div className={`text-[10px] ${selectedTime.includes('Morning') ? 'text-amber-100' : 'text-[#5c5446]'}`}>
+                            <div className={`text-[10px] ${selectedTime.includes('Morning') ? 'text-emerald-100' : 'text-[var(--sc-text-dim)]'}`}>
                               09:00 AM - 01:00 PM
                             </div>
                           </div>
@@ -881,15 +721,15 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                         onClick={() => setSelectedTime('Evening Slot (04:00 PM - 09:00 PM)')}
                         className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                           selectedTime.includes('Evening')
-                            ? 'bg-[#7b5900] text-white border-[#7b5900] shadow-sm'
-                            : 'bg-[#f6f3ef] text-[#1c1c1a] border-[#d2c5b1]/40 hover:border-[#7b5900]'
+                            ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)] shadow-sm'
+                            : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text)] border-[var(--sc-border)] hover:border-[var(--sc-emerald)]'
                         }`}
                       >
                         <div className="flex items-center gap-3">
                           <span className="text-2xl">🌙</span>
                           <div>
                             <div className="font-bold text-xs">Evening Slot</div>
-                            <div className={`text-[10px] ${selectedTime.includes('Evening') ? 'text-amber-100' : 'text-[#5c5446]'}`}>
+                            <div className={`text-[10px] ${selectedTime.includes('Evening') ? 'text-emerald-100' : 'text-[var(--sc-text-dim)]'}`}>
                               04:00 PM - 09:00 PM
                             </div>
                           </div>
@@ -903,19 +743,18 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                 </div>
               </div>
 
+               {/* SECTION 2: SELECT SERVICE */}
+               <div className="space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t border-[var(--sc-border)]/60">
+                 <div className="flex items-center gap-3">
+                   <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                     2
+                   </div>
+                   <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
+                     Select Service
+                   </h2>
+                 </div>
 
-              {/* SECTION 2: SELECT SERVICE */}
-              <div className="space-y-6 pt-4 border-t border-[#d2c5b1]/30">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full bg-[#7b5900] text-white font-bold text-xs flex items-center justify-center shrink-0">
-                    2
-                  </div>
-                  <h2 className="font-serif font-bold text-xl md:text-2xl text-[#1c1c1a]">
-                    Select Service
-                  </h2>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                   {MEHENDI_SERVICES.map((srv) => {
                     const isSelected = selectedMehendiService === srv.id;
 
@@ -923,27 +762,27 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                       <div
                         key={srv.id}
                         onClick={() => setSelectedMehendiService(srv.id)}
-                        className={`bg-white rounded-2xl p-5 border cursor-pointer transition-all flex flex-col justify-between shadow-xs ${
+                        className={`bg-[var(--sc-surface)] rounded-2xl p-5 border cursor-pointer transition-all flex flex-col justify-between shadow-xs ${
                           isSelected
-                            ? 'border-2 border-[#7b5900] bg-[#fcf9f5] ring-2 ring-[#7b5900]/20 shadow-md'
-                            : 'border-[#d2c5b1]/40 hover:border-[#7b5900]/60'
+                            ? 'border-2 border-[var(--sc-emerald)] bg-[var(--sc-bg-soft)] ring-2 ring-[var(--sc-emerald)]/20 shadow-md'
+                            : 'border-[var(--sc-border)] hover:border-[var(--sc-emerald)]/60'
                         }`}
                       >
                         <div className="space-y-2">
                           <div className="text-2xl">{srv.icon}</div>
-                          <h3 className="font-serif font-bold text-base text-[#1c1c1a]">
+                          <h3 className="font-serif font-bold text-base text-[var(--sc-text)]">
                             {srv.title}
                           </h3>
-                          <div className="text-xs font-bold text-[#7b5900]">
+                          <div className="text-xs font-bold text-[var(--sc-emerald-dark)]">
                             {srv.price}
                           </div>
-                          <p className="text-[11px] text-[#5c5446]">
+                          <p className="text-[11px] text-[var(--sc-text-dim)]">
                             {srv.subtext}
                           </p>
                         </div>
 
                         <div className="pt-4">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#7b5900] bg-[#7b5900]/10 px-3 py-1 rounded-full border border-[#7b5900]/20">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--sc-emerald-dark)] bg-[var(--sc-emerald)]/10 px-3 py-1 rounded-full border border-[var(--sc-emerald)]/20">
                             <span>⏱</span>
                             <span>{srv.duration}</span>
                           </span>
@@ -954,24 +793,23 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                 </div>
               </div>
 
-
-              {/* SECTION 3: ADDITIONAL NOTES */}
-              <div className="space-y-4 pt-4 border-t border-[#d2c5b1]/30">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full bg-[#7b5900] text-white font-bold text-xs flex items-center justify-center shrink-0">
-                    3
-                  </div>
-                  <h2 className="font-serif font-bold text-xl md:text-2xl text-[#1c1c1a]">
-                    Additional Notes <span className="text-xs font-normal text-[#5c5446]">(optional)</span>
-                  </h2>
-                </div>
+               {/* SECTION 3: ADDITIONAL NOTES */}
+               <div className="space-y-4 pt-4 sm:pt-6 border-t border-[var(--sc-border)]/60">
+                 <div className="flex items-center gap-3">
+                   <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                     3
+                   </div>
+                   <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
+                     Additional Notes <span className="text-xs font-normal text-[var(--sc-text-dimmer)]">(optional)</span>
+                   </h2>
+                 </div>
 
                 <textarea
                   rows={4}
                   value={additionalNotes}
                   onChange={(e) => setAdditionalNotes(e.target.value)}
                   placeholder="Design preferences, skin allergies, special requirements..."
-                  className="w-full p-4 rounded-2xl bg-[#f6f3ef] border border-[#d2c5b1]/40 text-xs font-medium text-[#1c1c1a] focus:outline-none focus:border-[#7b5900] focus:bg-white shadow-xs"
+                  className="w-full p-4 rounded-2xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
                 />
               </div>
 
@@ -986,37 +824,33 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                 const currentPayableAmount = paymentOption === 'advance' ? defaultAdvance : srvPrice;
                 const currentPayableNum = paymentOption === 'advance' ? defaultAdvanceNum : fullPriceNum;
 
-                // Real UPI payment URL string for dynamic QR code generation (Google Pay - Suji)
-                const upiPayString = `upi://pay?pa=sujishyamalakutti-7@okaxis&pn=Suji&am=${currentPayableNum}&cu=INR&tn=${encodeURIComponent('Mehendi Slot Deposit')}`;
-                const dynamicQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(upiPayString)}`;
-
                 return (
-                  <div className="space-y-6 pt-4 border-t border-[#d2c5b1]/30">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-full bg-[#7b5900] text-white font-bold text-xs flex items-center justify-center shrink-0">
-                          4
-                        </div>
+                <div className="space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t border-[var(--sc-border)]/60">
+                     <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                         <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                           4
+                         </div>
                         <div>
-                          <h2 className="font-serif font-bold text-xl md:text-2xl text-[#1c1c1a]">
+                          <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
                             Select Payment Method ({currentPayableAmount})
                           </h2>
-                          <p className="text-xs text-[#5c5446]">
+                          <p className="text-xs text-[var(--sc-text-dim)]">
                             Choose your preferred payment mode to secure your appointment slot.
                           </p>
                         </div>
                       </div>
                     </div>
 
-                    {/* Deposit Option Selector: Advance vs Full */}
-                    <div className="grid grid-cols-2 gap-3 bg-[#f6f3ef] p-1.5 rounded-2xl border border-[#d2c5b1]/40">
+                    {/* Deposit Option Selector */}
+                    <div className="grid grid-cols-2 gap-3 bg-[var(--sc-accent-warm)] p-1.5 rounded-2xl border border-[var(--sc-border)]">
                       <button
                         type="button"
                         onClick={() => setPaymentOption('advance')}
                         className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                           paymentOption === 'advance'
-                            ? 'bg-[#7b5900] text-white shadow-xs'
-                            : 'text-[#5c5446] hover:text-[#1c1c1a]'
+                            ? 'bg-[var(--sc-emerald)] text-white shadow-xs'
+                            : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
                         }`}
                       >
                         <span>🛡️ Slot Deposit ({defaultAdvance})</span>
@@ -1026,57 +860,21 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                         onClick={() => setPaymentOption('full')}
                         className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                           paymentOption === 'full'
-                            ? 'bg-[#7b5900] text-white shadow-xs'
-                            : 'text-[#5c5446] hover:text-[#1c1c1a]'
+                            ? 'bg-[var(--sc-emerald)] text-white shadow-xs'
+                            : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
                         }`}
                       >
                         <span>✨ Full Payment ({srvPrice})</span>
                       </button>
                     </div>
 
-                    {/* Gateway Mode Switcher: Razorpay vs Manual UPI */}
-                    <div className="grid grid-cols-2 gap-2 bg-[#ece7df] p-1.5 rounded-2xl">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPaymentGatewayMode('razorpay');
-                          setFormError(null);
-                        }}
-                        className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                          paymentGatewayMode === 'razorpay'
-                            ? 'bg-[#1c1c1a] text-[#f5d796] shadow-sm'
-                            : 'text-[#5c5446] hover:text-[#1c1c1a]'
-                        }`}
-                      >
-                        <span>⚡</span>
-                        <span>Razorpay Instant Gateway</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPaymentGatewayMode('manual_upi');
-                          setFormError(null);
-                        }}
-                        className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                          paymentGatewayMode === 'manual_upi'
-                            ? 'bg-[#1c1c1a] text-[#f5d796] shadow-sm'
-                            : 'text-[#5c5446] hover:text-[#1c1c1a]'
-                        }`}
-                      >
-                        <span>📱</span>
-                        <span>Direct UPI QR & UTR</span>
-                      </button>
-                    </div>
-
-                    {paymentGatewayMode === 'razorpay' ? (
-                      <div className="bg-[#fcf9f5] border border-[#e8dccb] rounded-2xl p-5 space-y-4 shadow-xs">
-                        <div className="flex items-center justify-between border-b border-[#e8dccb] pb-3">
+                    <div className="bg-[var(--sc-bg-soft)] border border-[var(--sc-border)] rounded-2xl p-5 space-y-4 shadow-xs">
+                        <div className="flex items-center justify-between border-b border-[var(--sc-border)] pb-3">
                           <div className="flex items-center gap-2">
                             <span className="text-xl">💳</span>
                             <div>
-                              <h4 className="font-bold text-xs text-[#1c1c1a]">Razorpay Official Secure Checkout</h4>
-                              <p className="text-[11px] text-[#5c5446]">One-click pay via UPI, Google Pay, PhonePe, Paytm, Cards, or NetBanking</p>
+                              <h4 className="font-bold text-xs text-[var(--sc-text)]">Razorpay Official Secure Checkout</h4>
+                              <p className="text-[11px] text-[var(--sc-text-dim)]">One-click pay via UPI, Google Pay, PhonePe, Paytm, Cards, or NetBanking</p>
                             </div>
                           </div>
                           <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-1 rounded-full border border-emerald-300 flex items-center gap-1">
@@ -1085,12 +883,12 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                           </span>
                         </div>
 
-                        <div className="bg-white p-4 rounded-xl border border-[#d2c5b1]/40 flex items-center justify-between text-xs">
+                        <div className="bg-[var(--sc-surface)] p-4 rounded-xl border border-[var(--sc-border)] flex items-center justify-between text-xs">
                           <div>
-                            <span className="text-[#5c5446] text-[11px] block">Amount Payable Now:</span>
-                            <strong className="text-lg text-[#7b5900]">{currentPayableAmount}</strong>
+                            <span className="text-[var(--sc-text-dim)] text-[11px] block">Amount Payable Now:</span>
+                            <strong className="text-lg text-[var(--sc-emerald-dark)]">{currentPayableAmount}</strong>
                             {paymentOption === 'advance' && (
-                              <p className="text-[10px] text-[#5c5446]">Remaining balance ({srvPrice} - {defaultAdvance}) can be paid after service completion.</p>
+                              <p className="text-[10px] text-[var(--sc-text-dim)]">Remaining balance ({srvPrice} - {defaultAdvance}) can be paid after service completion.</p>
                             )}
                           </div>
                           <div className="text-right">
@@ -1100,161 +898,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                           </div>
                         </div>
                       </div>
-                    ) : (
-                      /* Dedicated Manual Scanner Card */
-                      <div className="bg-[#fcf9f5] border border-[#e8dccb] rounded-2xl p-5 space-y-4 shadow-xs">
-                        <div className="flex items-center justify-between border-b border-[#e8dccb] pb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xl">📲</span>
-                            <div>
-                              <h4 className="font-bold text-xs text-[#1c1c1a]">Google Pay (GPay) Official Scanner</h4>
-                              <p className="text-[10px] text-[#5c5446]">Payable: <strong className="text-[#7b5900] text-xs font-extrabold">{currentPayableAmount}</strong> (Full Service: {srvPrice})</p>
-                            </div>
-                          </div>
-                          <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-1 rounded-full border border-emerald-300 flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-                            <span>Active UPI</span>
-                          </span>
-                        </div>
-
-                        {/* QR Scanner Display */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
-                          <div className="bg-[#f0f4f9] border border-slate-200/90 rounded-3xl p-6 text-center flex flex-col items-center justify-center space-y-4 shadow-sm relative">
-                            <div className="flex items-center justify-center gap-2.5">
-                              <div className="w-11 h-11 rounded-full bg-[#a855f7] text-white font-bold text-lg flex items-center justify-center shadow-xs">
-                                S
-                              </div>
-                              <span className="text-xl font-bold text-slate-800 tracking-tight">Suji</span>
-                            </div>
-
-                            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs max-w-[260px] w-full flex flex-col items-center gap-3">
-                              <div className="relative w-48 h-48 bg-white p-1 flex items-center justify-center">
-                                <img
-                                  src={dynamicQrUrl}
-                                  alt="Google Pay QR Code - Suji (sujishyamalakutti-7@okaxis)"
-                                  className="w-full h-full object-contain"
-                                  referrerPolicy="no-referrer"
-                                />
-                                <div className="absolute w-9 h-9 bg-white rounded-full p-1.5 border border-slate-200 shadow-sm flex items-center justify-center">
-                                  <svg viewBox="0 0 24 24" className="w-full h-full">
-                                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                                  </svg>
-                                </div>
-                              </div>
-                              <p className="text-[11px] font-semibold text-slate-700 font-mono tracking-tight bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200/60">
-                                UPI ID: sujishyamalakutti-7@okaxis
-                              </p>
-                            </div>
-
-                            <p className="text-[11px] font-medium text-slate-600">Scan to pay with any UPI app</p>
-                          </div>
-
-                          <div className="space-y-4 text-xs">
-                            <div className="space-y-2">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-[#7b5900] block">
-                                STEP 1: TAP TO OPEN YOUR PAYMENT APP
-                              </span>
-                              <div className="grid grid-cols-2 gap-2">
-                                <a
-                                  href={upiPayString}
-                                  className="py-2.5 px-3 bg-stone-900 hover:bg-stone-800 text-white font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                                >
-                                  <span>🌐</span>
-                                  <span>Google Pay / UPI</span>
-                                </a>
-                                <a
-                                  href={`phonepe://pay?pa=sujishyamalakutti-7@okaxis&pn=Suji&am=${currentPayableNum}&cu=INR&tn=${encodeURIComponent('Mehendi Slot Deposit')}`}
-                                  className="py-2.5 px-3 bg-[#5f259f] hover:bg-[#4d1d83] text-white font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                                >
-                                  <span>📱</span>
-                                  <span>PhonePe</span>
-                                </a>
-                              </div>
-                            </div>
-
-                            <div className="space-y-2 pt-2 border-t border-[#e8dccb]">
-                              <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-bold uppercase tracking-wider text-[#1c1c1a]">
-                                  STEP 2: UPI TRANSACTION ID <span className="text-red-600">* MANDATORY</span>
-                                </label>
-                                <button
-                                  type="button"
-                                  onClick={handleClipboardAutoPaste}
-                                  className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-lg border border-amber-300 hover:bg-amber-200 transition-colors flex items-center gap-1 cursor-pointer"
-                                >
-                                  <span>📋</span>
-                                  <span>Auto-Paste Txn ID</span>
-                                </button>
-                              </div>
-
-                              <input
-                                type="text"
-                                value={paymentUtr}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setPaymentUtr(val);
-                                  if (val.trim().length >= 6) {
-                                    setPaymentVerifiedSuccess(true);
-                                  } else {
-                                    setPaymentVerifiedSuccess(false);
-                                  }
-                                }}
-                                placeholder="Enter 12-digit UPI Transaction ID from receipt"
-                                className="w-full px-3 py-2.5 rounded-xl bg-white border border-[#d2c5b1] text-xs font-mono text-[#1c1c1a] focus:outline-none focus:border-[#7b5900] focus:ring-1 focus:ring-[#7b5900]"
-                              />
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setFormError(null);
-                                  if (!paymentUtr.trim() || paymentUtr.trim().length < 6) {
-                                    setFormError('Please enter or paste your 12-digit UPI Transaction ID from your payment receipt first.');
-                                    return;
-                                  }
-                                  setIsVerifyingPayment(true);
-                                  setTimeout(() => {
-                                    setIsVerifyingPayment(false);
-                                    setPaymentVerifiedSuccess(true);
-                                  }, 500);
-                                }}
-                                disabled={isVerifyingPayment}
-                                className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                                  paymentVerifiedSuccess
-                                    ? 'bg-emerald-700 text-white shadow-xs'
-                                    : 'bg-stone-900 text-white hover:bg-stone-800'
-                                }`}
-                              >
-                                {isVerifyingPayment ? (
-                                  <>
-                                    <span className="material-symbols-outlined text-xs animate-spin">sync</span>
-                                    <span>VERIFYING TRANSACTION ID...</span>
-                                  </>
-                                ) : paymentVerifiedSuccess ? (
-                                  <>
-                                    <span>✓ TRANSACTION ID LINKED</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span>VERIFY TRANSACTION ID</span>
-                                    <span className="material-symbols-outlined text-xs">verified</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {paymentVerifiedSuccess && (
-                          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-xs font-semibold flex items-center gap-2">
-                            <span className="text-emerald-600 font-bold text-base">✓</span>
-                            <span>Payment linked! Transaction ID ({paymentUtr}) verified. Click 'CONFIRM & BOOK APPOINTMENT' below to finish.</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })()}
@@ -1264,28 +907,19 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 rounded-xl bg-[#7b5900] text-white font-bold text-sm hover:bg-[#c79a3b] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-99 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full py-4 rounded-xl bg-[var(--sc-emerald)] text-white font-bold text-sm hover:bg-[var(--sc-emerald-light)] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-99 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? (
                     <>
                       <span className="material-symbols-outlined text-sm animate-spin">sync</span>
-                      <span>
-                        {paymentGatewayMode === 'razorpay'
-                          ? 'OPENING RAZORPAY SECURE CHECKOUT...'
-                          : 'CONFIRMING & SENDING EMAIL NOTIFICATIONS...'}
-                      </span>
+                      <span>OPENING RAZORPAY SECURE CHECKOUT...</span>
                     </>
-                  ) : paymentGatewayMode === 'razorpay' ? (
+                  ) : (
                     <>
                       <span className="material-symbols-outlined text-sm">lock</span>
                       <span>
                         PAY {paymentOption === 'advance' ? (selectedMehendiService.includes('bridal') ? '₹500' : '₹100') : (MEHENDI_SERVICES.find(s => s.id === selectedMehendiService)?.price || '₹200')} VIA RAZORPAY & CONFIRM
                       </span>
-                    </>
-                  ) : (
-                    <>
-                      <span>CONFIRM APPOINTMENT NOW</span>
-                      <span className="material-symbols-outlined text-sm">event_available</span>
                     </>
                   )}
                 </button>
@@ -1297,5 +931,3 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
     </div>
   );
 };
-
-
