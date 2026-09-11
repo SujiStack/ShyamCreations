@@ -1,5 +1,4 @@
 # Shyam Creations
-i am suji s
 Shyam Creations is a Vite + React + TypeScript bridal and artisanal studio experience for South Asian wedding jewelry, jewellery rentals, and mehendi booking services. The application includes a public storefront, customer authentication, cart and wishlist flows, Razorpay-ready checkout, Supabase-backed storage, and an admin portal for managing bookings and product activity.
 
 ## Features

@@ -251,3 +251,8 @@ html { scrollbar-color: var(--sc-emerald) #F0E7D6; }
 
 .scroll-hide::-webkit-scrollbar { display: none; }
 .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Bigger jewellery images */
+.jewelry-image-lg { width: 100%; height: 100%; object-fit: contain; }
+.jewelry-card-img { width: 100%; height: 280px; object-fit: cover; }
+@media (min-width: 640px) { .jewelry-card-img { height: 320px; } }
