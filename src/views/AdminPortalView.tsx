@@ -13,7 +13,6 @@ import {
   updateSupabaseJewelleryBookingStatus,
   deleteSupabaseJewelleryBooking,
   JEWELLERY_BOOKINGS_TABLE_SQL,
-  JEWELLERY_TABLE_SQL,
   fetchSupabaseBookings,
   fetchSupabaseJewellery,
   testSupabaseConnection,
@@ -103,9 +102,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [showBookingsSqlModal, setShowBookingsSqlModal] = useState(false);
   const [copiedBookingsSql, setCopiedBookingsSql] = useState(false);
 
-  // Jewellery Items Table Schema State
-  const [showJewellerySqlModal, setShowJewellerySqlModal] = useState(false);
-  const [copiedJewellerySql, setCopiedJewellerySql] = useState(false);
 
   // Supabase Custom Connection & Diagnostic State
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -978,15 +974,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   <span>DB Config</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowJewellerySqlModal(true)}
-                  className="px-3.5 py-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] text-[#E0B45F] border border-[#E0B45F]/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
-                  title="View PostgreSQL DDL Schema for jewellery table"
-                >
-                  <span className="material-symbols-outlined text-sm">code</span>
-                  <span>Table SQL</span>
-                </button>
+
 
                 <button
                   type="button"
@@ -2067,64 +2055,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
       )}
 
-      {/* SQL TABLE SCHEMA (DDL) MODAL FOR jewellery items */}
-      {showJewellerySqlModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-[var(--sc-surface-alt-card)] rounded-3xl p-6 md:p-8 max-w-2xl w-full border border-[#E0B45F]/50 shadow-2xl space-y-5 relative">
-            <div className="flex justify-between items-start border-b border-[var(--sc-border-dark)] pb-4">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#E0B45F] bg-[#E0B45F]/10 px-2.5 py-0.5 rounded-full border border-[#E0B45F]/30">
-                  PostgreSQL DDL Query
-                </span>
-                <h3 className="font-serif text-xl font-bold text-white mt-1">
-                  `jewellery` Table Schema & Seed Data
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowJewellerySqlModal(false)}
-                className="p-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] rounded-full text-white transition-colors cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-lg">close</span>
-              </button>
-            </div>
-
-            <p className="text-xs text-[#ded8ce] leading-relaxed">
-              Copy and execute the following SQL script in your <strong className="text-[#E0B45F]">Supabase SQL Editor</strong> to create or populate the <code className="text-[#E0B45F] font-mono">jewellery</code> table with sample bridal & minimal items:
-            </p>
-
-            <div className="relative">
-              <pre className="bg-[#14110E] p-4 rounded-2xl border border-[var(--sc-border-dark)] text-xs font-mono text-amber-300 max-h-64 overflow-y-auto whitespace-pre-wrap selection:bg-amber-900 selection:text-white">
-                {JEWELLERY_TABLE_SQL}
-              </pre>
-
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(JEWELLERY_TABLE_SQL);
-                  setCopiedJewellerySql(true);
-                  setTimeout(() => setCopiedJewellerySql(false), 2500);
-                }}
-                className="absolute top-3 right-3 px-3 py-1.5 bg-[#E0B45F] hover:bg-[#C08A34] text-[var(--sc-surface-alt)] font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-sm">content_copy</span>
-                <span>{copiedJewellerySql ? '✓ COPIED!' : 'Copy SQL'}</span>
-              </button>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setShowJewellerySqlModal(false)}
-                className="px-5 py-2.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] text-white font-bold text-xs rounded-xl border border-[var(--sc-border-dark)] cursor-pointer"
-              >
-                Close Modal
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* SUPABASE CONNECTION & DIAGNOSTICS MODAL */}
       {showConfigModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 overflow-y-auto animate-in fade-in duration-200">
@@ -2313,19 +2243,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-2 border-t border-[var(--sc-border-dark)]">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowConfigModal(false);
-                  setShowJewellerySqlModal(true);
-                }}
-                className="text-xs text-[#E0B45F] hover:text-white font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-sm">code</span>
-                <span>View Supabase SQL Schema</span>
-              </button>
-
+            <div className="flex justify-end pt-2">
               <button
                 type="button"
                 onClick={() => setShowConfigModal(false)}

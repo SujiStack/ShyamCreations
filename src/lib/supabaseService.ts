@@ -177,102 +177,6 @@ export interface DBPaymentRow {
   notes?: string;
 }
 
-export const JEWELLERY_TABLE_SQL = `-- Run this SQL in your Supabase SQL Editor to create the jewellery table:
-
-CREATE TABLE IF NOT EXISTS public.jewellery (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    name VARCHAR(255) NOT NULL,
-    category VARCHAR(100) DEFAULT 'Bridal',
-    type VARCHAR(50) DEFAULT 'Rental',
-    price VARCHAR(50) DEFAULT '₹25,000',
-    amount NUMERIC DEFAULT 25000,
-    rental_price_day VARCHAR(50) DEFAULT '₹1,500/day',
-    stock INT DEFAULT 4,
-    stock_label VARCHAR(100) DEFAULT '4 Available',
-    image TEXT,
-    images JSONB,
-    description TEXT,
-    material TEXT,
-    weight VARCHAR(100),
-    inclusion TEXT
-);
-
--- Enable Row Level Security (RLS)
-ALTER TABLE public.jewellery ENABLE ROW LEVEL SECURITY;
-
--- Allow public read & insert access
-CREATE POLICY "Allow public read and write on jewellery"
-ON public.jewellery
-FOR ALL
-USING (true)
-WITH CHECK (true);
-
--- Insert sample bridal collection
-INSERT INTO public.jewellery (name, category, type, price, amount, rental_price_day, stock, stock_label, images, description, material, weight, inclusion)
-VALUES
-(
-  'Kundan Bridal Set',
-  'Bridal',
-  'Rental',
-  '₹25,000',
-  25000,
-  '₹1,500/day',
-  4,
-  '4 Available',
-  '["https://lh3.googleusercontent.com/aida-public/AB6AXuBjFHTab9h762r8M6V6-ZdWjsTXARICmnrQBUgUkXVLgeu_JNQNaOfUnfMM0oeFiakmwOHEnTE6dRxQP0CJ4wpUSrmzWOCHGKYawcEG8EjCwVi2nvKrLbenZ3j_j5cwa_8rK76POfQx-E9RarHxDZQHwzoLAysDrfXnhw9e1f5NConq3ZOCilQmud9ogQz_-WNnvoTtWt6216gAnXWMHT24mMGMSHiVcElTz8hcKjxb6rdM_ELubhwLABBQXHHDHOj3bPedbyXzIODj"]'::jsonb,
-  'A masterpiece of traditional craftsmanship, featuring intricate kundan work set in 22k gold plating, accented with emerald beads and pearls.',
-  '22k Gold Plated, Kundan, Emerald Beads, Pearls',
-  '245 grams',
-  'Necklace, Earrings, Maang Tikka'
-),
-(
-  'Royal Polki Choker',
-  'Bridal',
-  'Rental',
-  '₹18,000',
-  18000,
-  '₹1,800/day',
-  4,
-  '4 Available',
-  '["https://lh3.googleusercontent.com/aida-public/AB6AXuD_jbuFLZq1ZXxKKACftMFK35aNdwd9VeQgOYWu3VuiWRpiXOAOCtind5NReGTTahercU7__M-Nq5MSZSg7-EPpe8RPLiqNbekSdSFQhtGW8OqCD-V_AMm7xTMnWOI4RrKyz7AK3tmgIxi_jga34tgtatZmvip2ORDPwbwcW-EkcysI2BRwxZACxWK-jr5xQimYzC75R19eG4Ipu91vny8ToYEzmDye-RToMzj3mZxXRtyTu6cIYcV6XkmRGI0PUvOnFyEtTCF7hqJg"]'::jsonb,
-  'Regal polki choker set lined with rubies and freshwater pearls. Designed to accentuate traditional South Indian & bridal ensembles.',
-  '22k Gold Foil, Uncut Diamonds (Polki), Ruby Drops',
-  '190 grams',
-  'Choker & Matching Jhumkas'
-),
-(
-  'Heritage Pearl Jhumkas',
-  'Minimal',
-  'Sale',
-  '₹4,500',
-  4500,
-  '₹600/day',
-  5,
-  '5 Units Available',
-  '["https://lh3.googleusercontent.com/aida-public/AB6AXuDnb2GfmkHVz1W7BYqKzs8N0VVvG9oZ2MorgUfZ9iYNNzifvmTyrVOqCSzZvseBJT2k527rm7wj9kQfyP2qHoto4YS_DYXhkeFERQxotoRs5fksf-DU_ncgUayh8rNha3td_m85kDzVIf793m6-2HO20D_E6xOdTR6kI-q5D5OrgYSQbqQm_e4DPsgx1Vcvck8Jy2bbOsL_6QG6zNkk95rFzHJhG0ulVLeeFYsemA-CMv8aZzAHP66TTbRRp7VFVDCLMmwGHBMdB_8m"]'::jsonb,
-  'Delicate minimal jhumkas suitable for sangeet, engagement, and reception functions.',
-  'Silver Alloy with 18k Gold Plating & Pearls',
-  '65 grams',
-  'Pair of Earrings'
-),
-(
-  'Guttapusalu Hair Set',
-  'Hair',
-  'Rental',
-  '₹12,000',
-  12000,
-  '₹1,200/day',
-  8,
-  '8 Available',
-  '["https://lh3.googleusercontent.com/aida-public/AB6AXuAYwLxURGQANC52Col9Ykdeli1RfILsyHM-31PdErcJVUuwuL48zIVSwaz0YrO4eqnGUQidnFafDwpxgUueYAojdr4TRnBofPalWL-z0w2Nh0wUkqbxNVh6HtKwxoLud06saqxjiUkS9x7ZihQkispCY-I2uvaWaqzvPoiMagupLMjh7lukiEScf_J_8BChGC_RualG8lYwttKKMUZMn7Bf5vmiSMnPeiuYt3wHwm4_9O_Is3JHtWB7-7AH3VV8ojHx33zQvh6d2JYH"]'::jsonb,
-  'Handcrafted temple jewelry hair accessories and matha patti set with cascading pearl clusters.',
-  'Brass with 24k Gold Dip & Pearl Clusters',
-  '110 grams',
-  'Matha Patti & 6 Hair Pins'
-);
-`;
-
 export interface DBBookingRow {
   id?: string;
   ref: string;
@@ -662,6 +566,30 @@ export async function addSupabaseDisabledSlot(date: string, slot: string, status
   }
 }
 
+export async function deleteSupabaseDisabledSlot(date: string, slot: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+
+  try {
+    const { error } = await supabase
+      .from('bookings_availability')
+      .delete()
+      .eq('date', date)
+      .eq('slot', slot);
+
+    if (error) {
+      const fallback = await supabase
+        .from('disabled_slots')
+        .delete()
+        .eq('date', date)
+        .eq('slot', slot);
+      return !fallback.error;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Messages API
  */
@@ -695,8 +623,8 @@ export async function sendSupabaseMessage(msg: Omit<DBMessageRow, 'id' | 'create
 export async function fetchSupabaseJewellery(): Promise<any[] | null> {
   const creds = getSupabaseCredentials();
   if (!creds.isConfigured) {
-    console.info('Supabase URL & Anon Key not configured. Using local products catalogue.');
-    return null;
+    console.info('Supabase URL & Anon Key not configured. No jewellery data will be displayed.');
+    return [];
   }
 
   try {
@@ -734,7 +662,7 @@ export async function fetchSupabaseJewellery(): Promise<any[] | null> {
 
     if (combinedRows.length === 0) {
       console.info('[Supabase] 0 jewellery rows returned. If rows exist in Supabase, ensure RLS SELECT policy is enabled (CREATE POLICY "Allow public select" ON jewellery FOR SELECT USING (true);)');
-      return null;
+      return []; // Return empty array instead of null for consistency
     }
 
     // Sort by created_at if available
@@ -896,7 +824,7 @@ export async function fetchSupabaseJewellery(): Promise<any[] | null> {
     return parsedProducts;
   } catch (err) {
     console.warn('Supabase fetch jewellery unexpected error:', err);
-    return null;
+    return [];
   }
 }
 
@@ -1017,13 +945,27 @@ export async function loginSupabaseAdmin(
       });
 
       if (!error && data?.user) {
-        return { success: true, user: data.user };
+        // Verify the user is an admin via app_metadata role
+        const userRole = (data.user as any)?.app_metadata?.role;
+        const isAdminByRole = userRole === 'admin' || userRole === 'super_admin' || userRole === 'service_role';
+        const isAdminByEmail = isMasterAdminEmail;
+
+        if (isAdminByRole || isAdminByEmail) {
+          return { success: true, user: data.user };
+        }
+
+        // Not an admin - sign out and return error
+        await supabase.auth.signOut();
+        return { 
+          success: false, 
+          error: `Access denied. User "${cleanEmail}" does not have admin privileges in Supabase (app_metadata.role = "${userRole || 'none'}"). Please set role to "admin" in Supabase Auth → Users → ${cleanEmail} → Edit → App Metadata.` 
+        };
       }
 
       if (error) {
         console.warn('Supabase Auth error:', error.message);
 
-        // Fallback check in custom Supabase 'admins' table
+        // Fallback: check custom 'admins' table (for legacy setup)
         try {
           const { data: dbUser, error: dbErr } = await supabase
             .from('admins')

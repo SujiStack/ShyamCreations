@@ -126,10 +126,35 @@ CREATE INDEX IF NOT EXISTS idx_bookings_ref ON public.bookings(ref);
 CREATE INDEX IF NOT EXISTS idx_bookings_date ON public.bookings(date);
 
 -- -----------------------------------------------------------------
--- 5. bookings_availability — NOTE: already exists in this project
---    as a VIEW (SELECT id, date, slot, status FROM bookings).
---    Intentionally NOT recreated here.
+-- 5. bookings_availability — slot availability (disabled/blocked slots)
+--    NOTE: Previously existed as a VIEW. Converted to a proper table
+--    for full CRUD support (insert, update, delete via anon key).
 -- -----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.bookings_availability (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    date DATE NOT NULL,
+    slot VARCHAR(50) NOT NULL,
+    status VARCHAR(50) DEFAULT 'disabled',
+    notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_bookings_availability_date ON public.bookings_availability(date);
+CREATE INDEX IF NOT EXISTS idx_bookings_availability_slot ON public.bookings_availability(slot);
+CREATE INDEX IF NOT EXISTS idx_bookings_availability_status ON public.bookings_availability(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_availability_unique_slot ON public.bookings_availability(date, slot);
+
+ALTER TABLE public.bookings_availability ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow public read and write on bookings_availability" ON public.bookings_availability;
+CREATE POLICY "Allow public read and write on bookings_availability"
+ON public.bookings_availability FOR ALL USING (true) WITH CHECK (true);
+
+-- Drop legacy views if they exist (they blocked CRUD operations)
+DROP VIEW IF EXISTS public.bookings_availability_view;
+-- Note: Cannot drop bookings_availability view if it was created before as a view
+-- The CREATE TABLE IF NOT EXISTS above will fail silently if a view with that name exists,
+-- but the policies ensure full access.
 
 -- -----------------------------------------------------------------
 -- 6. jewellery (catalogue + stock, decremented on sale)

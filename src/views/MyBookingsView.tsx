@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ViewMode, HennaBooking, JewelleryRental, CustomerAccount } from '../types';
+import { ViewMode, HennaBooking, JewelleryRental, CustomerAccount, PendingAuthAction } from '../types';
 import {
   fetchAllUserBookingsAndOrdersByPhone,
   rescheduleSupabaseBooking,
@@ -13,6 +13,7 @@ interface MyBookingsViewProps {
   onRescheduleBooking?: (bookingId: string, newDate: string, newTimeSlot: string, notes?: string) => void;
   customerUser?: CustomerAccount | null;
   onOpenAuthModal?: () => void;
+  onRequireAuth?: (pendingAction?: PendingAuthAction) => void;
 }
 
 type PaymentTone = 'paid' | 'pending' | 'failed' | 'refunded';
@@ -26,50 +27,42 @@ function paymentTone(status?: string): PaymentTone | null {
   return 'pending';
 }
 
-const PAYMENT_BADGE_STYLES: Record<PaymentTone, string> = {
-  paid: 'bg-emerald-50 text-emerald-800 border-emerald-300',
-  pending: 'bg-amber-50 text-amber-800 border-amber-300',
-  failed: 'bg-red-50 text-red-700 border-red-300',
-  refunded: 'bg-slate-100 text-slate-700 border-slate-300',
+const PAYMENT_STYLES: Record<PaymentTone, string> = {
+  paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  pending: 'bg-amber-50 text-amber-800 border-amber-200',
+  failed: 'bg-red-50 text-red-700 border-red-200',
+  refunded: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
-const PAYMENT_BADGE_ICON: Record<PaymentTone, string> = {
-  paid: 'check_circle',
-  pending: 'hourglass_top',
-  failed: 'error',
-  refunded: 'revert',
+const PAYMENT_ICONS: Record<PaymentTone, string> = {
+  paid: '✓',
+  pending: '⋯',
+  failed: '✕',
+  refunded: '↺',
 };
 
-const PAYMENT_BADGE_LABEL: Record<PaymentTone, string> = {
-  paid: 'Paid',
-  pending: 'Payment Pending',
-  failed: 'Payment Failed',
-  refunded: 'Refunded',
-};
-
-const PaymentBadge: React.FC<{ status?: string; className?: string }> = ({ status, className = '' }) => {
+const StatusBadge: React.FC<{ status?: string; className?: string }> = ({ status, className = '' }) => {
   const tone = paymentTone(status);
   if (!tone) return null;
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-bold rounded-full border uppercase tracking-wide ${PAYMENT_BADGE_STYLES[tone]} ${className}`}
+      className={`inline-flex items-center gap-1 px-3 py-1 text-[10px] font-bold rounded-full border capitalize ${PAYMENT_STYLES[tone]} ${className}`}
     >
-      <span className="material-symbols-outlined text-[13px] leading-none">{PAYMENT_BADGE_ICON[tone]}</span>
-      <span>{PAYMENT_BADGE_LABEL[tone]}</span>
+      <span className="text-xs leading-none">{PAYMENT_ICONS[tone]}</span>
+      {tone === 'paid' ? 'Paid' : tone === 'pending' ? 'Pending' : tone === 'failed' ? 'Failed' : 'Refunded'}
     </span>
   );
 };
 
-const PaymentIdChip: React.FC<{ id?: string }> = ({ id }) => {
+const RefChip: React.FC<{ id?: string }> = ({ id }) => {
   if (!id) return null;
-  const short = id.length > 14 ? `${id.slice(0, 8)}...${id.slice(-4)}` : id;
+  const short = id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
   return (
     <span
       title={id}
-      className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-[var(--sc-text-dimmer)] bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] px-2 py-0.5 rounded-full cursor-help"
+      className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-[var(--sc-text-dimmer)] bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] px-2.5 py-1 rounded-full"
     >
-      <span className="material-symbols-outlined text-[12px] leading-none">receipt_long</span>
-      <span>{short}</span>
+      <span>REF: {short}</span>
     </span>
   );
 };
@@ -81,10 +74,11 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
   onRescheduleBooking,
   customerUser = null,
   onOpenAuthModal,
+  onRequireAuth,
 }) => {
-  const [activeTab, setActiveTab] = useState<'henna' | 'jewellery'>('henna');
-  const [selectedBookingDetails, setSelectedBookingDetails] = useState<HennaBooking | null>(null);
-
+  // Tab state: show a unified timeline of all bookings
+  const [activeTab, setActiveTab] = useState<'all' | 'henna' | 'jewellery'>('all');
+  const [selectedBooking, setSelectedBooking] = useState<HennaBooking | JewelleryRental | null>(null);
   const [rescheduleBooking, setRescheduleBooking] = useState<HennaBooking | null>(null);
   const [newDate, setNewDate] = useState<string>('');
   const [newTimeSlot, setNewTimeSlot] = useState<string>('10:00 AM');
@@ -96,9 +90,9 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [searchedQuery, setSearchedQuery] = useState<string>(customerUser?.phone || '');
   const [hasSearched, setHasSearched] = useState<boolean>(false);
+  const [searchMessage, setSearchMessage] = useState<string>('');
   const [fetchedHennaBookings, setFetchedHennaBookings] = useState<HennaBooking[] | null>(null);
   const [fetchedJewelleryRentals, setFetchedJewelleryRentals] = useState<JewelleryRental[] | null>(null);
-  const [searchMessage, setSearchMessage] = useState<string>('');
 
   useEffect(() => {
     if (customerUser && (customerUser.phone || customerUser.email)) {
@@ -108,7 +102,6 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     } else {
       handleClearLookup();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerUser]);
 
   const handleClearLookup = () => {
@@ -118,14 +111,9 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     setMobileInput('');
     setSearchedQuery('');
     setSearchMessage('');
-    try {
-      localStorage.removeItem('shyam_user_mobile');
-    } catch {
-      // ignore
-    }
   };
 
-  const handleTabSwitch = (tab: 'henna' | 'jewellery') => {
+  const handleTabSwitch = (tab: 'all' | 'henna' | 'jewellery') => {
     setActiveTab(tab);
   };
 
@@ -141,9 +129,8 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     }
 
     if (customPhone) setMobileInput(customPhone);
-
     setIsSearching(true);
-    setSearchMessage('Searching both database tables...');
+    setSearchMessage('Searching database...');
     setSearchedQuery(query);
 
     try {
@@ -260,561 +247,501 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
   const handleConfirmReschedule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rescheduleBooking) return;
-
     setIsSubmittingReschedule(true);
-    setRescheduleStatus('Updating appointment date in Supabase database...');
-
+    setRescheduleStatus('Updating...');
     try {
-      await rescheduleSupabaseBooking(
-        rescheduleBooking.ref || rescheduleBooking.id,
+      const result = await rescheduleSupabaseBooking(
+        rescheduleBooking.id || rescheduleBooking.ref,
         newDate,
         newTimeSlot,
         rescheduleNotes
       );
-
-      if (onRescheduleBooking) {
-        onRescheduleBooking(rescheduleBooking.id, newDate, newTimeSlot, rescheduleNotes);
+      if (result) {
+        setRescheduleStatus('✓ Rescheduled successfully!');
+        if (onRescheduleBooking) {
+          try { onRescheduleBooking(rescheduleBooking.id || rescheduleBooking.ref, newDate, newTimeSlot, rescheduleNotes); } catch {}
+        }
+        setTimeout(() => setRescheduleBooking(null), 1500);
+      } else {
+        setRescheduleStatus('⚠ Reschedule failed. Please try again.');
       }
-
-      if (fetchedHennaBookings) {
-        setFetchedHennaBookings((prev) =>
-          prev
-            ? prev.map((b) =>
-                b.id === rescheduleBooking.id || b.ref === rescheduleBooking.ref
-                  ? {
-                      ...b,
-                      date: newDate,
-                      timeSlot: newTimeSlot,
-                      status: 'Rescheduled',
-                      rescheduleNotes: rescheduleNotes || b.rescheduleNotes,
-                    }
-                  : b
-              )
-            : null
-        );
-      }
-
-      setRescheduleStatus('✓ Success! Your Mehendi appointment date has been rescheduled.');
-      setTimeout(() => {
-        setRescheduleBooking(null);
-        setIsSubmittingReschedule(false);
-      }, 1200);
-    } catch {
-      setRescheduleStatus('Updated locally.');
-      if (onRescheduleBooking) {
-        onRescheduleBooking(rescheduleBooking.id, newDate, newTimeSlot, rescheduleNotes);
-      }
-      setTimeout(() => {
-        setRescheduleBooking(null);
-        setIsSubmittingReschedule(false);
-      }, 1200);
+    } catch (err) {
+      setRescheduleStatus(`⚠ Reschedule failed: ${err}`);
+    } finally {
+      setIsSubmittingReschedule(false);
     }
   };
 
-  const displayedHennaBookings = hasSearched ? (fetchedHennaBookings || []) : [];
-  const displayedJewelleryRentals = hasSearched ? (fetchedJewelleryRentals || []) : [];
+  // Combine bookings for unified view
+  const allHenna = fetchedHennaBookings ?? hennaBookings;
+  const allJewellery = fetchedJewelleryRentals ?? jewelleryRentals;
+
+  const displayedBookings = activeTab === 'all'
+    ? [...allHenna, ...allJewellery]
+    : activeTab === 'henna'
+    ? allHenna
+    : allJewellery;
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (d.toString() === 'Invalid Date') return dateStr;
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const getBookingType = (b: any): 'henna' | 'jewellery' => {
+    if ('serviceName' in b && 'serviceCategory' in b) return 'henna';
+    return 'jewellery';
+  };
+
+  const getBookingRef = (b: any): string => b.ref || b.id || '';
+  const getBookingName = (b: any): string => b.serviceName || b.productName || 'Untitled';
+  const getBookingDate = (b: any): string => b.date || b.startDate || '';
+  const getBookingTime = (b: any): string => b.timeSlot || b.returnDue || '';
+  const getBookingStatus = (b: any): string => b.status || '';
+  const getBookingClient = (b: any): string => b.clientName || b.clientName || '';
 
   return (
-    <div className="pt-24 pb-20 px-4 md:px-16 max-w-7xl mx-auto">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Sidebar Portal Navigation */}
-        <aside className="lg:col-span-3 bg-[var(--sc-surface)] rounded-2xl p-6 border border-[var(--sc-border)] lux-card-shadow space-y-6">
-          <div className="flex items-center gap-3 border-b border-[var(--sc-border)] pb-4">
-            <div className="w-12 h-12 rounded-full bg-[var(--sc-emerald-deep)] text-[var(--sc-emerald-lux)] font-bold flex items-center justify-center text-lg shadow border border-[var(--sc-emerald)]/40">
-              SC
-            </div>
-            <div>
-              <p className="font-serif font-bold text-sm text-[var(--sc-text)]">
-                Client Portal
-              </p>
-              <p className="text-[11px] text-[var(--sc-text-dimmer)]">Shyam Creations Concierge</p>
-            </div>
+    <div className="pt-20 pb-16 px-4 md:px-8 max-w-6xl mx-auto min-h-screen bg-[var(--sc-bg-soft)]">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="font-serif text-3xl md:text-4xl font-bold text-[var(--sc-text)]">My Bookings</h1>
+        {customerUser && (
+          <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-[var(--sc-emerald)]/10 rounded-full border border-[var(--sc-emerald)]/30">
+            <span className="w-6 h-6 rounded-full bg-[var(--sc-emerald)] text-white flex items-center justify-center text-xs font-bold">
+              {(customerUser.name || '').slice(0, 2).toUpperCase()}
+            </span>
+            <span className="font-semibold text-[var(--sc-emerald-dark)]">{customerUser.name}</span>
           </div>
-
-          {/* Quick Contact Box */}
-          <div className="p-3 bg-[var(--sc-emerald-deep)] text-[#ded8ce] rounded-xl text-xs space-y-2 border border-[var(--sc-emerald)]/30">
-            <span className="font-bold text-[var(--sc-emerald-lux)] text-[10px] uppercase tracking-wider block">Direct Concierge</span>
-            <a href={`tel:${STUDIO_INFO.phone}`} className="flex items-center gap-2 hover:text-[var(--sc-emerald-lux)]">
-              <span className="material-symbols-outlined text-sm">call</span>
-              <span>{STUDIO_INFO.phone}</span>
-            </a>
-            <a
-              href={`https://wa.me/919363710342?text=${encodeURIComponent('Hi Shyam Creations, I need help with my appointment.')}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 text-[#5F9E7D] hover:underline"
-            >
-              <span className="material-symbols-outlined text-sm">chat</span>
-              <span>WhatsApp Concierge</span>
-            </a>
-          </div>
-
-          <div className="space-y-1 text-xs font-semibold">
-            <button
-              onClick={() => handleTabSwitch('henna')}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center justify-between transition-all ${
-                activeTab === 'henna'
-                  ? 'bg-[var(--sc-emerald-deep)] text-[#f3ebd9] shadow'
-                  : 'text-[var(--sc-text-dim)] hover:bg-[var(--sc-accent-warm)]'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-base">calendar_add_on</span>
-                <span>Mehendi Appointments</span>
-              </span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'henna' ? 'bg-[var(--sc-emerald)]/40 text-white' : 'bg-[var(--sc-emerald)]/20 text-[var(--sc-emerald-dark)]'}`}>
-                {displayedHennaBookings.length}
-              </span>
-            </button>
-
-            <button
-              onClick={() => handleTabSwitch('jewellery')}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center justify-between transition-all ${
-                activeTab === 'jewellery'
-                  ? 'bg-[var(--sc-emerald)] text-white shadow'
-                  : 'text-[var(--sc-text-dim)] hover:bg-[var(--sc-accent-warm)]'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-base">diamond</span>
-                <span>Jewellery Rentals & Orders</span>
-              </span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'jewellery' ? 'bg-white/20 text-white' : 'bg-[var(--sc-emerald)]/20 text-[var(--sc-emerald-dark)]'}`}>
-                {displayedJewelleryRentals.length}
-              </span>
-            </button>
-          </div>
-        </aside>
-
-        {/* Right Content Area */}
-        <main className="lg:col-span-9 space-y-6">
-          {/* Top Bar Header */}
-          <div className="bg-[var(--sc-surface)] rounded-2xl p-6 border border-[var(--sc-border)] lux-card-shadow flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="font-serif text-2xl md:text-3xl font-bold text-[var(--sc-text)]">
-                  My Bookings & Orders
-                </h1>
-                {customerUser && (
-                  <span className="px-2.5 py-0.5 bg-[var(--sc-emerald)]/15 text-[var(--sc-emerald-dark)] text-[11px] font-bold rounded-full border border-[var(--sc-emerald)]/30 flex items-center gap-1">
-                    <span className="material-symbols-outlined text-xs">verified</span>
-                    <span>{customerUser.name}</span>
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-[var(--sc-text-dimmer)] mt-1">
-                {customerUser
-                  ? `Viewing appointments and orders linked to ${customerUser.name} (${customerUser.phone || customerUser.email}).`
-                  : 'Enter your 10-digit mobile number to view and manage your appointments and jewellery rentals.'}
-              </p>
-            </div>
-
-            {customerUser ? (
-              <div className="flex items-center gap-2 bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] px-3.5 py-2 rounded-xl text-xs">
-                <div className="w-8 h-8 rounded-full bg-[var(--sc-emerald)] text-white flex items-center justify-center font-bold text-xs">
-                  {customerUser.name.slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <p className="font-bold text-[var(--sc-text)]">{customerUser.name}</p>
-                  <p className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>Live Account Synced</span>
-                  </p>
-                </div>
-              </div>
-            ) : onOpenAuthModal ? (
-              <button
-                type="button"
-                onClick={onOpenAuthModal}
-                className="px-4 py-2 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald-light)] text-white text-xs font-bold rounded-xl shadow transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-sm">lock_open</span>
-                <span>Sign In For Auto-Sync</span>
-              </button>
-            ) : null}
-          </div>
-
-          {/* Mobile Number Lookup Form / Customer Session Banner */}
-          <div className="bg-[var(--sc-emerald-deep)] text-white rounded-2xl p-6 border border-[var(--sc-emerald)]/50 shadow-xl space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-white/15 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[var(--sc-emerald-lux)] text-xl">
-                  {customerUser ? 'account_circle' : 'phone_iphone'}
-                </span>
-                <h3 className="font-serif text-lg font-bold text-[#f3ebd9]">
-                  {customerUser
-                    ? `Active Customer: ${customerUser.name}`
-                    : 'Fetch Bookings by Mobile Number'}
-                </h3>
-              </div>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-300 bg-emerald-950/60 border border-emerald-500/40 px-2.5 py-0.5 rounded-full w-max">
-                {customerUser ? '✓ Auto-Connected to Supabase' : 'Verified Customer Lookup'}
-              </span>
-            </div>
-
-            <form onSubmit={handleFetchByMobile} className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <span className="material-symbols-outlined absolute left-3.5 top-3 text-gray-400 text-lg">
-                  contact_phone
-                </span>
-                <input
-                  type="text"
-                  value={mobileInput}
-                  onChange={(e) => setMobileInput(e.target.value)}
-                  placeholder={
-                    customerUser
-                      ? `Phone or email: ${customerUser.phone || customerUser.email}`
-                      : 'Enter 10-digit Mobile Number or Ref Code...'
-                  }
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#221D18] border border-white/15 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-[var(--sc-emerald-lux)] font-medium"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSearching}
-                className="px-6 py-3 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald-light)] text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-2 shadow cursor-pointer disabled:opacity-50"
-              >
-                {isSearching ? (
-                  <span>Searching Database...</span>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-sm">sync</span>
-                    <span>{customerUser ? 'REFRESH MY BOOKINGS' : 'FETCH MY BOOKINGS'}</span>
-                  </>
-                )}
-              </button>
-
-              {customerUser && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const phone = customerUser.phone || customerUser.email;
-                    setMobileInput(phone);
-                    handleFetchByMobile(undefined, phone);
-                  }}
-                  className="px-4 py-3 bg-[#221D18] hover:bg-[#2A2118] border border-[var(--sc-emerald)]/40 text-[var(--sc-emerald-lux)] rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer"
-                  title="Reload bookings registered under your login account"
-                >
-                  Reload My Account
-                </button>
-              )}
-
-              {fetchedHennaBookings !== null && !customerUser && (
-                <button
-                  type="button"
-                  onClick={handleClearLookup}
-                  className="px-4 py-3 bg-[#2A2118] hover:bg-gray-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
-                >
-                  Clear Lookup
-                </button>
-              )}
-            </form>
-
-            {searchMessage && (
-              <div className={`p-3 rounded-xl text-xs font-semibold ${
-                searchMessage.startsWith('✓')
-                  ? 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-300'
-                  : 'bg-amber-950/80 border border-amber-500/50 text-amber-300'
-              }`}>
-                {searchMessage}
-              </div>
-            )}
-          </div>
-
-          {/* Toggle Switch and Content */}
-          {!hasSearched ? (
-            <div className="bg-[var(--sc-surface)] rounded-2xl p-8 md:p-12 text-center border border-[var(--sc-border)] lux-card-shadow space-y-4 animate-in fade-in duration-300">
-              <div className="w-16 h-16 rounded-2xl bg-[var(--sc-emerald-deep)] text-[var(--sc-emerald-lux)] mx-auto flex items-center justify-center shadow-lg border border-[var(--sc-emerald)]/30">
-                <span className="material-symbols-outlined text-3xl">lock_person</span>
-              </div>
-              <div className="space-y-1.5 max-w-md mx-auto">
-                <h3 className="font-serif text-2xl font-bold text-[var(--sc-text)]">
-                  Privacy-Protected Client Portal
-                </h3>
-                <p className="text-xs text-[var(--sc-text-dimmer)] leading-relaxed">
-                  To view your specific Mehendi appointments, jewellery rentals, or dispatch orders, please enter your registered 10-digit mobile number in the search box above.
-                </p>
-              </div>
-              <div className="pt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
-                <span className="px-3 py-1 bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] rounded-full text-[var(--sc-emerald-dark)] font-semibold flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm">shield</span>
-                  Confidential & Secure
-                </span>
-                <span className="px-3 py-1 bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] rounded-full text-[var(--sc-text)] font-semibold flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm">sync</span>
-                  Real-time Studio Sync
-                </span>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Toggle Switch */}
-              <div className="flex border-b border-[var(--sc-border)] pb-2 gap-6">
-                <button
-                  onClick={() => handleTabSwitch('henna')}
-                  className={`pb-2 text-sm font-bold tracking-wider uppercase transition-all flex items-center gap-2 ${
-                    activeTab === 'henna'
-                      ? 'text-[var(--sc-text)] border-b-2 border-[var(--sc-emerald)]'
-                      : 'text-[var(--sc-text-dimmer)] hover:text-[var(--sc-text)]'
-                  }`}
-                >
-                  <span>Mehendi Appointments</span>
-                  <span className="px-2 py-0.5 bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] rounded-full text-[10px]">
-                    {displayedHennaBookings.length}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => handleTabSwitch('jewellery')}
-                  className={`pb-2 text-sm font-bold tracking-wider uppercase transition-all flex items-center gap-2 ${
-                    activeTab === 'jewellery'
-                      ? 'text-[var(--sc-emerald-dark)] border-b-2 border-[var(--sc-emerald)]'
-                      : 'text-[var(--sc-text-dimmer)] hover:text-[var(--sc-text)]'
-                  }`}
-                >
-                  <span>Jewellery Rentals & Orders</span>
-                  <span className="px-2 py-0.5 bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] rounded-full text-[10px]">
-                    {displayedJewelleryRentals.length}
-                  </span>
-                </button>
-              </div>
-
-              {/* Mehendi Appointments List */}
-              {activeTab === 'henna' && (
-                <div className="space-y-4">
-                  {displayedHennaBookings.length === 0 ? (
-                    <div className="bg-[var(--sc-surface)] rounded-2xl p-8 text-center border border-[var(--sc-border)] space-y-3">
-                      <span className="material-symbols-outlined text-4xl text-gray-400">calendar_today</span>
-                      <p className="text-sm font-semibold text-[var(--sc-text)]">
-                        No Mehendi appointments found for "{searchedQuery}".
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Please verify your 10-digit mobile number or contact studio concierge.
-                      </p>
-                    </div>
-                  ) : (
-                displayedHennaBookings.map((booking) => (
-                  <div
-                    key={booking.id || booking.ref}
-                    className="bg-[var(--sc-surface)] rounded-2xl p-4 sm:p-6 border border-[var(--sc-border)] lux-card-shadow flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-6 hover:border-[var(--sc-emerald)]/50 transition-all"
-                  >
-                    <div className="flex gap-3 sm:gap-5 items-start">
-                      {/* Calendar Badge */}
-                      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[var(--sc-emerald-deep)] text-[var(--sc-emerald-lux)] flex flex-col items-center justify-center font-serif shadow-md shrink-0 border border-[var(--sc-emerald)]/30">
-                        <span className="text-[9px] uppercase font-bold tracking-widest text-[#a39c91]">
-                          {new Date(booking.date).toString() !== 'Invalid Date'
-                            ? new Date(booking.date).toLocaleString('default', { month: 'short' })
-                            : 'NOV'}
-                        </span>
-                        <span className="text-xl font-bold leading-none text-[#f3ebd9]">
-                          {new Date(booking.date).toString() !== 'Invalid Date'
-                            ? new Date(booking.date).getDate()
-                            : '20'}
-                        </span>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full uppercase ${
-                            booking.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
-                            booking.status === 'Rescheduled' ? 'bg-amber-100 text-amber-800' :
-                            'bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)]'
-                          }`}>
-                            {booking.status}
-                          </span>
-                          <PaymentBadge status={booking.paymentStatus} />
-                          <PaymentIdChip id={booking.transactionId} />
-                          {booking.serviceCategory && (
-                            <span className="px-2 py-0.5 bg-[var(--sc-emerald)]/15 text-[var(--sc-emerald-dark)] text-[10px] font-bold rounded-full uppercase">
-                              {booking.serviceCategory}
-                            </span>
-                          )}
-                          <span className="text-xs text-[var(--sc-text-dimmer)] font-mono font-bold">
-                            REF: {booking.ref}
-                          </span>
-                        </div>
-                        <h3 className="font-serif text-xl font-bold text-[var(--sc-text)]">
-                          {booking.serviceName}
-                        </h3>
-                        <p className="text-xs text-[var(--sc-text-dim)] flex flex-wrap items-center gap-1">
-                          <span className="material-symbols-outlined text-sm text-[var(--sc-emerald)]">schedule</span>
-                          <span className="font-semibold text-[var(--sc-text)]">{booking.timeSlot}</span>
-                          <span className="mx-1">•</span>
-                          <span className="material-symbols-outlined text-sm text-[var(--sc-emerald)]">location_on</span>
-                          <span>{booking.location}</span>
-                        </p>
-                        {booking.paymentAmount && (
-                          <p className="text-[11px] text-[var(--sc-text-dimmer)]">
-                            Amount: <span className="font-bold text-[var(--sc-text)]">{booking.paymentAmount}</span>
-                            {booking.paymentMethod && (
-                              <span className="text-[var(--sc-text-dimmer)]"> · {booking.paymentMethod}</span>
-                            )}
-                          </p>
-                        )}
-                        <p className="text-[11px] text-[var(--sc-text-dimmer)]">
-                          Client: <span className="font-semibold text-[var(--sc-text)]">{booking.clientName}</span> ({booking.phone || booking.wa || booking.clientEmail})
-                        </p>
-                        {booking.rescheduleNotes && (
-                          <p className="text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 italic w-max">
-                            Note: "{booking.rescheduleNotes}"
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-3 w-full md:w-auto justify-end border-t md:border-t-0 pt-3 md:pt-0 border-[var(--sc-border)]/50">
-                      <button
-                        onClick={() => handleOpenReschedule(booking)}
-                        className="btn-royal px-4 py-2.5 bg-[var(--sc-emerald)] text-white rounded-xl text-[11px] font-bold hover:bg-[var(--sc-emerald-light)] transition-all flex items-center gap-1.5 shadow"
-                      >
-                        <span className="material-symbols-outlined text-sm">edit_calendar</span>
-                        <span>Reschedule Date</span>
-                      </button>
-
-                      <button
-                        onClick={() => setSelectedBookingDetails(booking)}
-                        className="btn-royal px-4 py-2.5 bg-[var(--sc-accent-warm)] text-[var(--sc-text)] border border-[var(--sc-border)] rounded-xl text-[11px] hover:bg-[var(--sc-emerald)]/10 transition-all font-bold"
-                      >
-                        View Details
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {/* Jewellery Rentals & Orders Tab */}
-          {activeTab === 'jewellery' && (
-            <div className="space-y-4">
-              {displayedJewelleryRentals.length === 0 ? (
-                <div className="bg-[var(--sc-surface)] rounded-2xl p-8 text-center border border-[var(--sc-border)] space-y-3">
-                  <span className="material-symbols-outlined text-4xl text-gray-400">diamond</span>
-                  <p className="text-sm font-semibold text-[var(--sc-text)]">No jewellery rentals or orders found.</p>
-                </div>
-              ) : (
-                displayedJewelleryRentals.map((rental) => (
-                  <div
-                    key={rental.id || rental.ref}
-                    className="bg-[var(--sc-surface)] rounded-2xl p-6 border border-[var(--sc-border)] lux-card-shadow flex flex-col md:flex-row justify-between items-start md:items-center gap-6"
-                  >
-                    <div className="flex gap-5 items-center">
-                      <img
-                        src={rental.image}
-                        alt={rental.productName}
-                        className="w-20 h-20 rounded-xl object-cover border border-[var(--sc-border)] shadow-xs"
-                      />
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="px-2.5 py-0.5 bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] text-[10px] font-bold rounded-full uppercase">
-                            {rental.status}
-                          </span>
-                          <PaymentBadge status={rental.paymentStatus} />
-                          <PaymentIdChip id={rental.transactionId} />
-                          <span className="text-xs text-[var(--sc-text-dimmer)] font-mono font-bold">
-                            REF: {rental.ref}
-                          </span>
-                        </div>
-                        <h3 className="font-serif text-xl font-bold text-[var(--sc-text)]">
-                          {rental.productName}
-                        </h3>
-                        <p className="text-xs text-[var(--sc-text-dim)]">
-                          Amount / Rate: <span className="font-bold text-[var(--sc-emerald-dark)]">{rental.dailyRate}</span>
-                        </p>
-                        <p className="text-xs text-[var(--sc-text-dimmer)] font-semibold">
-                          Delivery / Due Date: {rental.returnDue}
-                        </p>
-                        {rental.paymentMethod && (
-                          <p className="text-[11px] text-[var(--sc-text-dimmer)]">Paid via {rental.paymentMethod}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 w-full md:w-auto justify-end border-t md:border-t-0 pt-3 md:pt-0 border-[var(--sc-border)]/50">
-                      <a
-                        href={`https://wa.me/919363710342?text=${encodeURIComponent(
-                          `Hi Shyam Creations, I am contacting you regarding my Jewellery Order/Rental ${rental.productName} (REF: ${rental.ref}).`
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-royal px-4 py-2.5 border border-[var(--sc-emerald)] text-[var(--sc-emerald-dark)] rounded-xl text-[11px] hover:bg-[var(--sc-emerald)] hover:text-white transition-all font-bold flex items-center gap-1.5"
-                      >
-                        <span className="material-symbols-outlined text-sm">chat</span>
-                        <span>Contact Concierge</span>
-                      </a>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </>
-      )}
-      </main>
+        )}
       </div>
 
-      {/* Reschedule Mehendi Booking Modal */}
+      {/* Search / Lookup */}
+      <div className="bg-[var(--sc-surface)] rounded-2xl p-6 border border-[var(--sc-border)] shadow-md mb-6">
+        <form onSubmit={handleFetchByMobile} className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={mobileInput}
+              onChange={(e) => setMobileInput(e.target.value)}
+              placeholder={
+                customerUser
+                  ? `Phone: ${customerUser.phone || customerUser.email}`
+                  : 'Enter 10-digit mobile number or REF code...'
+              }
+              className="w-full px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-sm focus:outline-none focus:border-[var(--sc-emerald)]"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isSearching}
+            className="px-6 py-3 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald-light)] text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2"
+          >
+            {isSearching ? 'Searching...' : 'Find Bookings'}
+          </button>
+          {customerUser && !isSearching && (
+            <button
+              type="button"
+              onClick={() => handleClearLookup()}
+              className="px-4 py-3 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] rounded-xl text-sm font-bold transition-all"
+            >
+              Clear
+            </button>
+          )}
+        </form>
+        {searchMessage && (
+          <p className={`mt-3 text-xs font-semibold ${
+            searchMessage.startsWith('✓') ? 'text-emerald-600' : 'text-amber-600'
+          }`}>
+            {searchMessage}
+          </p>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6 bg-[var(--sc-surface)] rounded-xl p-1.5 border border-[var(--sc-border)]">
+        <button
+          onClick={() => handleTabSwitch('all')}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
+            activeTab === 'all' ? 'bg-[var(--sc-emerald-dark)] text-white shadow' : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
+          }`}
+        >
+          All ({allHenna.length + allJewellery.length})
+        </button>
+        <button
+          onClick={() => handleTabSwitch('henna')}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
+            activeTab === 'henna' ? 'bg-[var(--sc-emerald-deep)] text-white shadow' : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
+          }`}
+        >
+          Mehendi ({allHenna.length})
+        </button>
+        <button
+          onClick={() => handleTabSwitch('jewellery')}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
+            activeTab === 'jewellery' ? 'bg-[var(--sc-emerald)] text-white shadow' : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
+          }`}
+        >
+          Jewellery ({allJewellery.length})
+        </button>
+      </div>
+
+      {/* Bookings List */}
+      <div className="space-y-4">
+        {displayedBookings.length === 0 ? (
+          <div className="bg-[var(--sc-surface)] rounded-2xl p-12 text-center border border-[var(--sc-border)]">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--sc-accent-warm)] mx-auto flex items-center justify-center mb-4">
+              <span className="material-symbols-outlined text-3xl text-[var(--sc-text-dimmer)]">
+                {activeTab === 'henna' ? 'calendar_today' : activeTab === 'jewellery' ? 'diamond' : 'book'}
+              </span>
+            </div>
+            <h3 className="font-serif text-xl font-bold text-[var(--sc-text)] mb-2">
+              No {activeTab === 'all' ? 'bookings or orders' : activeTab === 'henna' ? 'mehendi appointments' : 'jewellery rentals'} found
+            </h3>
+            <p className="text-sm text-[var(--sc-text-dim)] max-w-md mx-auto">
+              Enter your mobile number or reference code to fetch your bookings from our database.
+            </p>
+          </div>
+        ) : (
+          displayedBookings.map((booking) => {
+            const type = getBookingType(booking);
+            const isHenna = type === 'henna';
+            const status = getBookingStatus(booking);
+            const paymentStatus = (booking as any).paymentStatus;
+            const trackingUrl = (booking as JewelleryRental).trackingUrl;
+            const deliveryAddress = (booking as JewelleryRental).deliveryAddress;
+            const trackingNumber = (booking as JewelleryRental).trackingNumber;
+
+            return (
+              <div key={getBookingRef(booking)} className="bg-[var(--sc-surface)] rounded-2xl p-5 border border-[var(--sc-border)] hover:border-[var(--sc-emerald)]/40 transition-all cursor-pointer shadow-sm"
+                onClick={() => setSelectedBooking(booking)}
+              >
+                <div className="flex items-center gap-4">
+                  {/* Date Badge */}
+                  <div className={`w-16 h-16 rounded-xl flex flex-col items-center justify-center font-serif shadow-md shrink-0 ${
+                    isHenna ? 'bg-[var(--sc-emerald-deep)] text-[var(--sc-emerald-lux)]' : 'bg-[#f3ebd9] text-[#3a4f3a]'
+                  }`}>
+                    <span className="text-[9px] uppercase font-bold tracking-wider">
+                      {formatDate(getBookingDate(booking)).split(' ')[1] || '---'}
+                    </span>
+                    <span className="text-xl font-bold leading-none">
+                      {new Date(getBookingDate(booking)).getDate() || '---'}
+                    </span>
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="font-serif text-lg font-bold text-[var(--sc-text)]">
+                          {getBookingName(booking)}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          {isHenna ? (
+                            <StatusBadge status={status} />
+                          ) : (
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                              paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}>
+                              {paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed' ? 'Paid' : 'Booked'}
+                            </span>
+                          )}
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                            isHenna ? 'bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] border-[var(--sc-emerald)]/20'
+                            : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}>
+                            {isHenna ? 'Mehendi' : 'Jewellery'}
+                          </span>
+                          <RefChip id={getBookingRef(booking)} />
+                        </div>
+
+                        {/* Additional Details for Mehendi */}
+                        {isHenna && (
+                          <div className="mt-2 space-y-1 text-xs text-[var(--sc-text-dim)]">
+                            <div className="flex items-center gap-4 flex-wrap">
+                              {booking.serviceCategory && (
+                                <span>Category: <span className="text-[var(--sc-text)] font-medium">{booking.serviceCategory}</span></span>
+                              )}
+                              {booking.paymentAmount && (
+                                <span>Amount: <span className="text-[var(--sc-text)] font-medium">{booking.paymentAmount}</span></span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 flex-wrap">
+                              {getBookingDate(booking) && (
+                                <span>Date: <span className="text-[var(--sc-text)] font-medium">{formatDate(getBookingDate(booking))}</span></span>
+                              )}
+                              {getBookingTime(booking) && (
+                                <span>Slot: <span className="text-[var(--sc-text)] font-medium">{getBookingTime(booking)}</span></span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        {isHenna ? (
+                          <div className="text-right">
+                            {getBookingTime(booking) && (
+                              <p className="text-sm font-bold text-[var(--sc-emerald-dark)]">{getBookingTime(booking)}</p>
+                            )}
+                            {getBookingDate(booking) && (
+                              <p className="text-xs text-[var(--sc-text-dim)] mt-1">
+                                {formatDate(getBookingDate(booking))}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-[var(--sc-emerald-dark)]">{(booking as JewelleryRental).dailyRate || '---'}</p>
+                            {(paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed') && (
+                              <p className="text-xs text-[var(--sc-text-dim)] mt-1">
+                                {(booking as JewelleryRental).returnDue ? `Due: ${(booking as JewelleryRental).returnDue}` : ''}
+                              </p>
+                            )}
+                            {(trackingUrl || (trackingNumber && deliveryAddress)) && (
+                              <a
+                                href={trackingUrl || '#'}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[10px] text-[var(--sc-emerald-dark)] hover:text-[var(--sc-emerald)] font-semibold flex items-center gap-1 justify-end"
+                              >
+                                <span>Track Shipment</span>
+                                <span className="material-symbols-outlined text-xs">launch</span>
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {isHenna && (
+                  <div className="mt-3 pt-3 border-t border-[var(--sc-border)]/50 flex gap-2 text-xs">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleOpenReschedule(booking as HennaBooking); }}
+                      className="px-3 py-1.5 bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] rounded-lg font-semibold hover:bg-[var(--sc-emerald)]/20 transition-all"
+                    >
+                      Reschedule
+                    </button>
+                    <a
+                      href={`https://wa.me/${STUDIO_INFO.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                        `Hi, I have a question about my booking ${getBookingRef(booking)}.`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="px-3 py-1.5 bg-amber-50 text-amber-800 rounded-lg font-semibold hover:bg-amber-100 transition-all"
+                    >
+                      WhatsApp Support
+                    </a>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Booking Details Modal */}
+      {selectedBooking && (() => {
+        const isHenna = getBookingType(selectedBooking) === 'henna';
+        const booking = selectedBooking;
+        const paymentStatus = (booking as any).paymentStatus;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div className="bg-[var(--sc-surface)] rounded-3xl max-w-lg w-full p-6 border border-[var(--sc-border)] shadow-2xl animate-in zoom-in-95 duration-200">
+              <div className="flex justify-between items-start border-b border-[var(--sc-border)] pb-4 mb-4">
+                <div>
+                  <span className={`text-[10px] font-bold uppercase text-[var(--sc-emerald-dark)]`}>
+                    {isHenna ? 'Mehendi Appointment' : 'Jewellery Rental / Order'}
+                  </span>
+                  <h3 className="font-serif text-xl font-bold text-[var(--sc-text)] mt-1">
+                    {getBookingName(booking)}
+                  </h3>
+                  <RefChip id={getBookingRef(booking)} />
+                </div>
+                <button
+                  onClick={() => setSelectedBooking(null)}
+                  className="p-1 hover:bg-[var(--sc-accent-warm)] rounded-full text-[var(--sc-text-dim)] transition-colors"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <div className="space-y-4 text-sm">
+                <div>
+                  <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Reference Number</span>
+                  <RefChip id={getBookingRef(booking)} />
+                </div>
+
+                {isHenna && (
+                  <>
+                    <div>
+                      <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Chosen Category</span>
+                      <span className="text-[var(--sc-text)]">{(booking as HennaBooking).serviceCategory || 'Mehendi Service'}</span>
+                    </div>
+                    {booking.paymentAmount && (
+                      <div>
+                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Amount</span>
+                        <span className="text-[var(--sc-emerald-dark)] font-bold">{booking.paymentAmount}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div>
+                  <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Date</span>
+                  <span className="font-bold text-[var(--sc-text)]">
+                    {formatDate(getBookingDate(booking))}
+                  </span>
+                </div>
+
+                {getBookingTime(booking) && (
+                  <div>
+                    <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Time Slot</span>
+                    <span className="font-bold text-[var(--sc-text)]">{getBookingTime(booking)}</span>
+                  </div>
+                )}
+
+                <div>
+                  <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Status</span>
+                  <StatusBadge status={getBookingStatus(booking)} className="text-xs px-3 py-1" />
+                </div>
+
+                {isHenna ? (
+                  <>
+                    <div>
+                      <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Location</span>
+                      <span className="text-[var(--sc-text)]">{(booking as HennaBooking).location || 'Studio / Client Venue'}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Client</span>
+                      <span className="text-[var(--sc-text)]">
+                        {(booking as HennaBooking).clientName} ({getBookingRef(booking)})
+                      </span>
+                    </div>
+                    {booking.specialRequests && (
+                      <div>
+                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Special Requests</span>
+                        <p className="text-[var(--sc-text-dim)] italic">"{booking.specialRequests}"</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Rate</span>
+                      <span className="font-bold text-[var(--sc-emerald-dark)]">{(booking as JewelleryRental).dailyRate}</span>
+                    </div>
+                    {booking.returnDue && (
+                      <div>
+                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Return Due</span>
+                        <span className="text-[var(--sc-text)]">{booking.returnDue}</span>
+                      </div>
+                    )}
+                    {(booking as JewelleryRental).deliveryAddress && (paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed') && (
+                      <div>
+                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Delivery Address</span>
+                        <span className="text-[var(--sc-text)]">{(booking as JewelleryRental).deliveryAddress}</span>
+                      </div>
+                    )}
+                    {(booking as JewelleryRental).trackingUrl && (
+                      <div>
+                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Track Shipment</span>
+                        <a
+                          href={(booking as JewelleryRental).trackingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[var(--sc-emerald-dark)] font-semibold flex items-center gap-1"
+                        >
+                          <span>{(booking as JewelleryRental).trackingNumber || (booking as JewelleryRental).trackingUrl}</span>
+                          <span className="material-symbols-outlined text-xs">launch</span>
+                        </a>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className="border-t border-[var(--sc-border)] pt-4 flex justify-end gap-2">
+                  <button
+                    onClick={() => setSelectedBooking(null)}
+                    className="px-4 py-2 bg-[var(--sc-accent-warm)] text-[var(--sc-text)] rounded-xl font-bold text-sm"
+                  >
+                    Close
+                  </button>
+                  {!isHenna && (
+                    <a
+                      href={`https://wa.me/${STUDIO_INFO.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                        `Hello, I have a query about my ${getBookingName(booking)} (REF: ${getBookingRef(booking)}).`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-4 py-2 bg-[var(--sc-emerald)] text-white rounded-xl font-bold text-sm"
+                    >
+                      WhatsApp Support
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Reschedule Modal */}
       {rescheduleBooking && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
-          <div className="bg-[var(--sc-surface)] rounded-3xl max-w-lg w-full p-6 md:p-8 border border-[var(--sc-emerald)]/50 shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center border-b border-[var(--sc-border)] pb-4">
+          <div className="bg-[var(--sc-surface)] rounded-3xl max-w-lg w-full p-6 border border-[var(--sc-emerald)]/50 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-[var(--sc-border)] pb-4 mb-4">
               <div>
-                <span className="text-[10px] uppercase font-bold text-[var(--sc-emerald-dark)] tracking-widest bg-[var(--sc-emerald)]/10 px-2.5 py-0.5 rounded-full border border-[var(--sc-emerald)]/30">
-                  Reschedule Appointment Date
-                </span>
-                <h3 className="font-serif text-2xl font-bold text-[var(--sc-text)] mt-1">
+                <span className="text-[10px] font-bold uppercase text-[var(--sc-emerald-dark)] tracking-wide">Reschedule Appointment</span>
+                <h3 className="font-serif text-xl font-bold text-[var(--sc-text)] mt-1">
                   {rescheduleBooking.serviceName}
                 </h3>
-                <p className="text-xs text-[var(--sc-text-dimmer)] font-mono font-semibold">REF: {rescheduleBooking.ref}</p>
               </div>
               <button
                 onClick={() => setRescheduleBooking(null)}
-                className="p-1.5 hover:bg-[#2A2118] rounded-full text-[#8A7F72] transition-colors"
+                className="p-1 hover:bg-[var(--sc-accent-warm)] rounded-full text-[var(--sc-text-dim)]"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
 
             {rescheduleStatus && (
-              <div className={`p-3 rounded-xl text-xs font-semibold ${
-                rescheduleStatus.includes('✓')
-                  ? 'bg-emerald-50 border border-emerald-300 text-emerald-900'
-                  : 'bg-amber-50 border border-amber-300 text-amber-900'
+              <p className={`mb-4 text-xs font-semibold ${
+                rescheduleStatus.includes('✓') ? 'text-emerald-600' : 'text-amber-600'
               }`}>
                 {rescheduleStatus}
-              </div>
+              </p>
             )}
 
             <form onSubmit={handleConfirmReschedule} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[var(--sc-text)] uppercase tracking-wider flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm text-[var(--sc-emerald)]">calendar_month</span>
-                  <span>Select New Mehendi Date *</span>
-                </label>
+              <div>
+                <label className="block text-xs font-bold text-[var(--sc-text-dimmer)] mb-1">New Date</label>
                 <input
                   type="date"
                   required
                   min={new Date().toISOString().split('T')[0]}
                   value={newDate}
                   onChange={(e) => setNewDate(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-bold focus:outline-none focus:border-[var(--sc-emerald)]"
+                  className="w-full px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-sm focus:outline-none focus:border-[var(--sc-emerald)]"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[var(--sc-text)] uppercase tracking-wider flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm text-[var(--sc-emerald)]">schedule</span>
-                  <span>Select Preferred Time Slot *</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {['09:00 AM', '11:30 AM', '02:00 PM', '04:30 PM', '06:00 PM'].map((slot) => (
+              <div>
+                <label className="block text-xs font-bold text-[var(--sc-text-dimmer)] mb-2">Preferred Time Slot</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {['09:00 AM', '11:00 AM', '02:00 PM', '04:00 PM', '06:00 PM'].map((slot) => (
                     <button
                       key={slot}
                       type="button"
                       onClick={() => setNewTimeSlot(slot)}
-                      className={`py-2.5 px-3 text-xs rounded-xl border transition-all font-bold ${
+                      className={`py-2.5 px-3 text-xs rounded-xl border font-bold transition-all ${
                         newTimeSlot === slot
                           ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)] shadow'
                           : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] border-[var(--sc-border)] hover:bg-[var(--sc-emerald)]/10'
@@ -826,148 +753,34 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[var(--sc-text)] uppercase tracking-wider">
-                  Reschedule Notes / Reason
-                </label>
+              <div>
+                <label className="block text-xs font-bold text-[var(--sc-text-dimmer)] mb-1">Reason / Notes</label>
                 <textarea
                   rows={2}
                   value={rescheduleNotes}
                   onChange={(e) => setRescheduleNotes(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs focus:outline-none focus:border-[var(--sc-emerald)]"
                   placeholder="e.g. Venue timing updated, family event change..."
+                  className="w-full px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-sm focus:outline-none focus:border-[var(--sc-emerald)]"
                 />
               </div>
 
-              <div className="border-t border-[var(--sc-border)] pt-4 flex justify-between items-center">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setRescheduleBooking(null)}
-                  className="px-4 py-2.5 border border-[var(--sc-border)] rounded-xl text-xs font-bold text-[var(--sc-text-dim)] hover:bg-[var(--sc-accent-warm)] hover:text-[var(--sc-text)] transition-all"
+                  className="px-4 py-2 bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] rounded-xl font-bold text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingReschedule}
-                  className="btn-royal px-6 py-2.5 bg-[var(--sc-emerald)] text-white rounded-xl text-xs font-bold hover:bg-[var(--sc-emerald-light)] shadow transition-all flex items-center gap-1.5"
+                  className="px-5 py-2 bg-[var(--sc-emerald)] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  <span className="material-symbols-outlined text-sm">published_with_changes</span>
-                  <span>Confirm Reschedule Date</span>
+                  <span>{isSubmittingReschedule ? '...' : 'Confirm'}</span>
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Booking Details Modal */}
-      {selectedBookingDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-[var(--sc-bg-soft)] rounded-3xl max-w-lg w-full p-6 border border-[var(--sc-border)] shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center border-b border-[var(--sc-border)]/60 pb-4">
-              <div>
-                <span className="text-[10px] font-bold uppercase text-[var(--sc-emerald-dark)]">Shyam Creations Booking</span>
-                <h3 className="font-serif text-xl font-bold text-[var(--sc-text)]">
-                  Reference #{selectedBookingDetails.ref}
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedBookingDetails(null)}
-                className="p-1 hover:bg-[var(--sc-accent-warm)] rounded-full text-[var(--sc-text-dim)] transition-colors"
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs text-[var(--sc-text)]">
-              {/* Payment Status Hero */}
-              <div className={`p-4 rounded-2xl border space-y-2 ${
-                paymentTone(selectedBookingDetails.paymentStatus) === 'paid'
-                  ? 'bg-emerald-50 border-emerald-200'
-                  : paymentTone(selectedBookingDetails.paymentStatus) === 'pending'
-                  ? 'bg-amber-50 border-amber-200'
-                  : 'bg-[var(--sc-surface)] border-[var(--sc-border)]/60'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-[var(--sc-text-dimmer)] uppercase tracking-wider text-[10px]">Payment Status</span>
-                  <PaymentBadge status={selectedBookingDetails.paymentStatus} className="text-[11px] px-3 py-1" />
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                  {selectedBookingDetails.paymentAmount && (
-                    <span className="text-base font-black text-[var(--sc-text)]">{selectedBookingDetails.paymentAmount}</span>
-                  )}
-                  {selectedBookingDetails.paymentMethod && (
-                    <span className="text-[var(--sc-text-dim)]">{selectedBookingDetails.paymentMethod}</span>
-                  )}
-                </div>
-                {selectedBookingDetails.transactionId && (
-                  <div className="pt-1 border-t border-[var(--sc-border)]/40">
-                    <span className="text-[10px] font-bold text-[var(--sc-text-dimmer)] block mb-0.5">Transaction ID</span>
-                    <span className="font-mono text-[11px] font-semibold text-[var(--sc-text)] break-all">
-                      {selectedBookingDetails.transactionId}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <span className="font-bold text-[var(--sc-text-dimmer)] block">Service Title:</span>
-                <span className="font-serif text-base font-semibold text-[var(--sc-text)]">
-                  {selectedBookingDetails.serviceName}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="font-bold text-[var(--sc-text-dimmer)] block">Appointment Date:</span>
-                  <span className="font-bold text-[var(--sc-emerald-dark)]">{selectedBookingDetails.date}</span>
-                </div>
-                <div>
-                  <span className="font-bold text-[var(--sc-text-dimmer)] block">Time Slot:</span>
-                  <span className="font-bold text-[var(--sc-text)]">{selectedBookingDetails.timeSlot}</span>
-                </div>
-              </div>
-
-              <div>
-                <span className="font-bold text-[var(--sc-text-dimmer)] block">Location / Address:</span>
-                {selectedBookingDetails.location}
-              </div>
-
-              <div>
-                <span className="font-bold text-[var(--sc-text-dimmer)] block">Client Contact:</span>
-                {selectedBookingDetails.clientName} ({selectedBookingDetails.phone || selectedBookingDetails.wa || selectedBookingDetails.clientEmail})
-              </div>
-
-              {selectedBookingDetails.specialRequests && (
-                <div>
-                  <span className="font-bold text-[var(--sc-text-dimmer)] block">Special Notes:</span>
-                  <p className="p-3 bg-[var(--sc-surface)] rounded-xl border border-[var(--sc-border)]/50 italic text-[var(--sc-text-dim)]">
-                    "{selectedBookingDetails.specialRequests}"
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-[var(--sc-border)]/50 pt-4 flex justify-between items-center">
-              <a
-                href={`https://wa.me/919363710342?text=${encodeURIComponent(
-                  `Concierge question regarding booking ${selectedBookingDetails.ref}`
-                )}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-bold text-[#2C6B4F] flex items-center gap-1 hover:underline"
-              >
-                <span className="material-symbols-outlined text-sm">chat</span>
-                <span>WhatsApp Studio Concierge</span>
-              </a>
-              <button
-                onClick={() => setSelectedBookingDetails(null)}
-                className="btn-royal px-6 py-2.5 bg-[var(--sc-emerald-deep)] text-white rounded-xl text-xs"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </div>
       )}

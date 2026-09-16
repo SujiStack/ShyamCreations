@@ -41,21 +41,25 @@ export function App() {
   const [currentView, setCurrentView] = useState<ViewMode>('home');
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategoryKey>('mehendi');
   const [products, setProducts] = useState<Product[]>(() => {
+    // Only use DB-sourced data; never fall back to mock data
     try {
       const cached = localStorage.getItem('shyam_jewellery_products');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const dbLike = parsed.filter((p: any) => !INITIAL_PRODUCTS.some(mock => mock.id === p.id));
+          if (dbLike.length > 0) {
+            return dbLike;
+          }
         }
       }
     } catch (e) {
       console.warn('Failed to parse cached jewellery products:', e);
     }
-    return INITIAL_PRODUCTS;
+    return [];
   });
   const [selectedProductId, setSelectedProductId] = useState<string>(
-    INITIAL_PRODUCTS[0]?.id || 'kundan-bridal-set-1'
+    products[0]?.id || (INITIAL_PRODUCTS[0]?.id || 'kundan-bridal-set-1')
   );
   const [hennaBookings, setHennaBookings] = useState<HennaBooking[]>(INITIAL_HENNA_BOOKINGS);
   const [jewelleryRentals, setJewelleryRentals] = useState<JewelleryRental[]>(
@@ -135,10 +139,10 @@ export function App() {
     } catch {
       // ignore
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+     window.scrollTo({ top: 0, behavior: 'smooth' });
+   };
 
-  // Sync Customer Cart & Wishlist to localStorage and DB (Only while user is signed in)
+   // Sync Customer Cart & Wishlist to localStorage and DB (Only while user is signed in)
   useEffect(() => {
     if (customerUser) {
       try {
@@ -442,7 +446,7 @@ export function App() {
 
   // Dynamic active product for detail page
   const selectedProduct =
-    products.find((p) => p.id === selectedProductId) || products[0] || INITIAL_PRODUCTS[0];
+    products.find((p) => p.id === selectedProductId) || products[0];
 
   const handleSelectProduct = (prod: Product) => {
     setSelectedProductId(prod.id);
@@ -592,7 +596,8 @@ export function App() {
             wishlistIds={wishlistIds}
             onDecrementStock={handleDecrementStock}
             onOpenCart={() => setIsCartDrawerOpen(true)}
-            onOpenWishlist={() => setIsWishlistDrawerOpen(true)}
+             onOpenWishlist={() => setIsWishlistDrawerOpen(true)}
+             onRefreshJewellery={handleRefreshJewellery}
           />
         )}
 

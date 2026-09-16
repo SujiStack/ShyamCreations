@@ -69,6 +69,8 @@ export interface JewelleryRental {
   itemPrice?: string;
   shippingFee?: string;
   deliveryAddress?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
 }
 
 export interface VisionaryArtist {

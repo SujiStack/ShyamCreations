@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ViewMode, CustomerAccount, PendingAuthAction } from '../types';
 import { ServiceCategoryKey } from '../views/HennaBookingView';
 

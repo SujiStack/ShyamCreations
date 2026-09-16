@@ -23,6 +23,7 @@ interface JewelleryProductViewProps {
   onDecrementStock?: (productId: string, quantity: number) => Promise<void>;
   onOpenCart?: () => void;
   onOpenWishlist?: () => void;
+  onRefreshJewellery?: () => void;
 }
 
 export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
@@ -40,6 +41,7 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   onDecrementStock,
   onOpenCart,
   onOpenWishlist,
+  onRefreshJewellery,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'bridal' | 'minimal' | 'hair' | 'buy' | 'rent'>('all');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -68,16 +70,19 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     }
   }, [product?.id]);
 
-  const displayProducts = products.length > 0 ? products : [product];
-  const filteredProducts = displayProducts.filter((p) => {
-    if (activeTab === 'all') return true;
-    if (activeTab === 'bridal') return p.category === 'Bridal' || p.category === 'Royal';
-    if (activeTab === 'minimal') return p.category === 'Minimal';
-    if (activeTab === 'hair') return p.category === 'Hair';
-    if (activeTab === 'buy') return p.type === 'Sale';
-    if (activeTab === 'rent') return p.type === 'Rental';
-    return true;
-  });
+  const displayProducts = [...products];
+  if (!displayProducts.some(p => p?.id === product?.id) && product) {
+    displayProducts.push(product);
+  }
+  const filteredProducts = displayProducts.filter((p) => p != null && (
+    activeTab === 'all' ? true
+    : activeTab === 'bridal' ? (p.category === 'Bridal' || p.category === 'Royal')
+    : activeTab === 'minimal' ? p.category === 'Minimal'
+    : activeTab === 'hair' ? p.category === 'Hair'
+    : activeTab === 'buy' ? p.type === 'Sale'
+    : activeTab === 'rent' ? p.type === 'Rental'
+    : true
+  ));
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -248,76 +253,95 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {filteredProducts.map((prod) => {
-          const isWishlisted = wishlistIds.includes(prod.id);
-          const maxStock = prod.stock ?? 1;
-          const inStock = maxStock > 0;
-          const currentQty = getProductQty(prod.id);
+      {filteredProducts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <span className="material-symbols-outlined text-6xl text-[var(--sc-text-dimmer)] mb-4">inventory_2</span>
+          <h3 className="font-serif text-2xl font-bold text-[var(--sc-text)] mb-2">No Jewellery Items Available</h3>
+          {/* <p className="text-[var(--sc-text-dim)] max-w-md">
+            The jewellery collection is currently empty. Please add items to the <code className="bg-[var(--sc-surface)] px-2 py-1 rounded">jewellery</code> table in your Supabase database, then refresh this page.
+          </p> */}
+          {onRefreshJewellery && (
+            <button
+              onClick={onRefreshJewellery}
+              className="mt-6 px-5 py-2.5 bg-[var(--sc-emerald-dark)] text-white rounded-xl font-bold text-sm flex items-center gap-2 cursor-pointer hover:bg-[var(--sc-accent-warm)] transition-all"
+            >
+              <span className="material-symbols-outlined text-sm">refresh</span>
+              Refresh Collection
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredProducts.map((prod) => {
+            const isWishlisted = wishlistIds.includes(prod.id);
+            const maxStock = prod.stock ?? 1;
+            const inStock = maxStock > 0;
+            const currentQty = getProductQty(prod.id);
 
-          return (
-            <div key={prod.id} onClick={() => setSelectedDetailProduct(prod)}
-              className="bg-[var(--sc-bg-soft)] rounded-3xl overflow-hidden transition-all cursor-pointer group hover:shadow-lg relative border border-[var(--sc-border)]/30">
-              <div className="relative aspect-[4/5] bg-[var(--sc-surface)] overflow-hidden flex items-center justify-center">
-                <img src={prod.images[0]} alt={prod.name}
-                  className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" />
-                <button onClick={(e) => handleWishlistClick(e, prod)}
-                  className="absolute top-3 right-3 p-2 rounded-full shadow-xs z-10 cursor-pointer transition-colors ${isWishlisted ? 'bg-rose-50 text-rose-600' : 'bg-white/80 hover:bg-white text-stone-400 hover:text-rose-500'}">
-                  <span className="material-symbols-outlined text-lg">{isWishlisted ? 'favorite' : 'favorite_border'}</span>
-                </button>
-                <span className="absolute top-3 left-3 px-2.5 py-0.5 bg-stone-900/80 backdrop-blur-xs text-amber-300 text-[10px] font-bold uppercase rounded-full">{prod.category}</span>
-                <span className={`absolute bottom-3 left-3 px-2.5 py-0.5 text-[10px] font-bold rounded-full ${!inStock ? 'bg-red-900/80 text-white' : maxStock <= 2 ? 'bg-amber-800/80 text-amber-200' : 'bg-emerald-900/80 text-emerald-200'}`}>
-                  {inStock ? `${maxStock} Available` : 'Out of Stock'}
-                </span>
-              </div>
-
-              <div className="p-4 space-y-3">
-                <h3 className="font-semibold text-base text-[var(--sc-text)] group-hover:text-[var(--sc-emerald-dark)] transition-colors leading-snug line-clamp-2">{prod.name}</h3>
-
-                {!isAuthenticated ? (
-                  <button type="button" onClick={(e) => handlePriceClick(e, prod)}
-                    className="w-full py-2.5 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald)] text-[var(--sc-emerald-dark)] hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border border-[var(--sc-border)]/50 cursor-pointer">
-                    <span className="material-symbols-outlined text-sm">lock</span>
-                    <span>Sign In to View Price</span>
+            return (
+              <div key={prod.id} onClick={() => setSelectedDetailProduct(prod)}
+                className="bg-[var(--sc-bg-soft)] rounded-3xl overflow-hidden transition-all cursor-pointer group hover:shadow-lg relative border border-[var(--sc-border)]/30">
+                <div className="relative aspect-[4/5] bg-[var(--sc-surface)] overflow-hidden flex items-center justify-center">
+                  <img src={prod.images[0]} alt={prod.name}
+                    className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" />
+                  <button onClick={(e) => handleWishlistClick(e, prod)}
+                    className="absolute top-3 right-3 p-2 rounded-full shadow-xs z-10 cursor-pointer transition-colors ${isWishlisted ? 'bg-rose-50 text-rose-600' : 'bg-white/80 hover:bg-white text-stone-400 hover:text-rose-500'}">
+                    <span className="material-symbols-outlined text-lg">{isWishlisted ? 'favorite' : 'favorite_border'}</span>
                   </button>
-                ) : (
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black text-[var(--sc-text)]">{prod.price}</span>
-                    <span className="text-sm text-[var(--sc-text-dimmer)] line-through">{getMRP(prod.price)}</span>
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md ml-auto">98% OFF</span>
-                  </div>
-                )}
+                  <span className="absolute top-3 left-3 px-2.5 py-0.5 bg-stone-900/80 backdrop-blur-xs text-amber-300 text-[10px] font-bold uppercase rounded-full">{prod.category}</span>
+                  <span className={`absolute bottom-3 left-3 px-2.5 py-0.5 text-[10px] font-bold rounded-full ${!inStock ? 'bg-red-900/80 text-white' : maxStock <= 2 ? 'bg-amber-800/80 text-amber-200' : 'bg-emerald-900/80 text-emerald-200'}`}>
+                    {inStock ? `${maxStock} Available` : 'Out of Stock'}
+                  </span>
+                </div>
 
-                {inStock && (
-                  <div className="flex items-center justify-between bg-[var(--sc-surface)] px-3 py-1.5 rounded-xl border border-[var(--sc-border)]/40 text-xs font-bold">
-                    <span className="text-[var(--sc-text-dim)]">Qty:</span>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setProductQty(prod.id, currentQty - 1, maxStock)} disabled={currentQty <= 1}
-                        className="w-6 h-6 rounded bg-[var(--sc-accent-warm)] flex items-center justify-center font-bold disabled:opacity-30 cursor-pointer">-</button>
-                      <span className="w-5 text-center">{currentQty}</span>
-                      <button onClick={() => setProductQty(prod.id, currentQty + 1, maxStock)} disabled={currentQty >= maxStock}
-                        className="w-6 h-6 rounded bg-[var(--sc-accent-warm)] flex items-center justify-center font-bold disabled:opacity-30 cursor-pointer">+</button>
+                <div className="p-4 space-y-3">
+                  <h3 className="font-semibold text-base text-[var(--sc-text)] group-hover:text-[var(--sc-emerald-dark)] transition-colors leading-snug line-clamp-2">{prod.name}</h3>
+
+                  {!isAuthenticated ? (
+                    <button type="button" onClick={(e) => handlePriceClick(e, prod)}
+                      className="w-full py-2.5 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald)] text-[var(--sc-emerald-dark)] hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border border-[var(--sc-border)]/50 cursor-pointer">
+                      <span className="material-symbols-outlined text-sm">lock</span>
+                      <span>Sign In to View Price</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-black text-[var(--sc-text)]">{prod.price}</span>
+                      <span className="text-sm text-[var(--sc-text-dimmer)] line-through">{getMRP(prod.price)}</span>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md ml-auto">98% OFF</span>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button onClick={(e) => handleAddToCartClick(e, prod)} disabled={!inStock}
-                    className="py-3 px-3 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald-dark)] text-[var(--sc-emerald-dark)] hover:text-white font-bold text-sm rounded-xl transition-all border border-[var(--sc-border)]/60 flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer">
-                    <span className="material-symbols-outlined text-base">add_shopping_cart</span>
-                    <span>ADD TO CART</span>
-                  </button>
-                  <button onClick={(e) => handleBuyNowAndProceed(prod, e)} disabled={!inStock}
-                    className="py-3 px-3 bg-[#171310] hover:bg-[var(--sc-emerald-dark)] text-[#f3ebd9] font-bold text-sm rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer">
-                    <span className="material-symbols-outlined text-base">shopping_bag</span>
-                    <span>{inStock ? 'BUY NOW' : 'OUT OF STOCK'}</span>
-                  </button>
+                  {inStock && (
+                    <div className="flex items-center justify-between bg-[var(--sc-surface)] px-3 py-1.5 rounded-xl border border-[var(--sc-border)]/40 text-xs font-bold">
+                      <span className="text-[var(--sc-text-dim)]">Qty:</span>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setProductQty(prod.id, currentQty - 1, maxStock)} disabled={currentQty <= 1}
+                          className="w-6 h-6 rounded bg-[var(--sc-accent-warm)] flex items-center justify-center font-bold disabled:opacity-30 cursor-pointer">-</button>
+                        <span className="w-5 text-center">{currentQty}</span>
+                        <button onClick={() => setProductQty(prod.id, currentQty + 1, maxStock)} disabled={currentQty >= maxStock}
+                          className="w-6 h-6 rounded bg-[var(--sc-accent-warm)] flex items-center justify-center font-bold disabled:opacity-30 cursor-pointer">+</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button onClick={(e) => handleAddToCartClick(e, prod)} disabled={!inStock}
+                      className="py-3 px-3 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald-dark)] text-[var(--sc-emerald-dark)] hover:text-white font-bold text-sm rounded-xl transition-all border border-[var(--sc-border)]/60 flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer">
+                      <span className="material-symbols-outlined text-base">add_shopping_cart</span>
+                      <span>ADD TO CART</span>
+                    </button>
+                    <button onClick={(e) => handleBuyNowAndProceed(prod, e)} disabled={!inStock}
+                      className="py-3 px-3 bg-[#171310] hover:bg-[var(--sc-emerald-dark)] text-[#f3ebd9] font-bold text-sm rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer">
+                      <span className="material-symbols-outlined text-base">shopping_bag</span>
+                      <span>{inStock ? 'BUY NOW' : 'OUT OF STOCK'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Detail Modal */}
       {selectedDetailProduct && (() => {

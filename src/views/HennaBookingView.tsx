@@ -891,11 +891,11 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                               <p className="text-[10px] text-[var(--sc-text-dim)]">Remaining balance ({srvPrice} - {defaultAdvance}) can be paid after service completion.</p>
                             )}
                           </div>
-                          <div className="text-right">
+                          {/* <div className="text-right">
                             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
                               ✓ Zero manual UTR typing required
                             </span>
-                          </div>
+                          </div> */}
                         </div>
                       </div>
                   </div>
