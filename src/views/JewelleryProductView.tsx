@@ -50,11 +50,13 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [customerAddress, setCustomerAddress] = useState<string>('');
+  const [deliveryState, setDeliveryState] = useState<string>('Tamil Nadu');
+  const [deliveryPincode, setDeliveryPincode] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmedOrderCard, setConfirmedOrderCard] = useState<{
     ref: string; productName: string; clientName: string; phone: string;
-    deliveryAddress: string; itemPrice: string; shippingFee: string;
-    totalAmount: string; transactionId: string; image: string;
+    deliveryAddress: string; deliveryState: string; deliveryPincode: string;
+    itemPrice: string; shippingFee: string; totalAmount: string; transactionId: string; image: string;
   } | null>(null);
 
   useEffect(() => {
@@ -129,19 +131,32 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     if (customerUser) { setCustomerName(customerUser.name || ''); setCustomerPhone(customerUser.phone || ''); }
   };
 
+  const TAMIL_NADU_PIN_PREFIXES = ['60', '61', '62', '63', '64'];
+
+  function calcShippingFeeForProduct(state: string, pincode: string): number {
+    const isTN = /tamil\s*nadu/i.test(state || '');
+    const digits = (pincode || '').replace(/[^0-9]/g, '');
+    const isPin60 = digits.length >= 2 && TAMIL_NADU_PIN_PREFIXES.includes(digits.slice(0, 2));
+    if (isTN && isPin60) return 0;
+    return 150;
+  }
+
   const handleRazorpayJewelleryOrder = async () => {
     setFormError(null);
     if (!checkoutProduct) return;
     if (!customerName.trim()) { setFormError('Please enter your full name.'); return; }
     if (!customerPhone.trim() || customerPhone.trim().length < 10) { setFormError('Please enter a valid 10-digit mobile number.'); return; }
     if (!customerAddress.trim() || customerAddress.trim().length < 8) { setFormError('Please enter complete delivery address.'); return; }
+    if (!deliveryState.trim()) { setFormError('Please enter the delivery State.'); return; }
+    if (!deliveryPincode.trim()) { setFormError('Please enter the delivery Pincode.'); return; }
 
     const qty = getProductQty(checkoutProduct.id) || 1;
     const rawPrice = parseInt(checkoutProduct.price.replace(/[^0-9]/g, ''), 10) || 2500;
     const subtotal = rawPrice * qty;
-    const totalAmountNum = subtotal + 50;
+    const shippingFeeNum = calcShippingFeeForProduct(deliveryState, deliveryPincode);
+    const totalAmountNum = subtotal + shippingFeeNum;
     const formattedItemPrice = `₹${subtotal.toLocaleString('en-IN')} (${qty} Qty)`;
-    const formattedShipping = `₹50`;
+    const formattedShipping = shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`;
     const formattedTotal = `₹${totalAmountNum.toLocaleString('en-IN')}`;
     const refCode = `JW-${Math.floor(100000 + Math.random() * 900000)}`;
 
@@ -154,9 +169,9 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         customerEmail: customerUser?.email || 'client@shyamcreations.com',
         customerPhone: customerPhone.trim(),
         serviceOrProductName: `${checkoutProduct.name} (${qty} Qty)`,
-        notes: `Courier Address: ${customerAddress.trim()}`,
+        notes: `Courier Address: ${customerAddress.trim()}, State: ${deliveryState.trim()}, Pincode: ${deliveryPincode.trim()}`,
         jewelleryId: checkoutProduct.id,
-        deliveryAddress: customerAddress.trim(),
+        deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         itemsToDecrement: [{ productId: checkoutProduct.id, quantity: qty }],
       });
 
@@ -168,24 +183,24 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         serviceCategory: 'Jewellery Rental & Sale',
         serviceName: `${checkoutProduct.name} (${qty} Qty)`,
         date: new Date().toISOString().split('T')[0], timeSlot: 'Express Shipping',
-        location: customerAddress.trim(), clientName: customerName.trim(),
+        location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, clientName: customerName.trim(),
         clientEmail: customerUser?.email || 'client@shyamcreations.com',
         phone: customerPhone.trim(), wa: customerPhone.trim(),
-        deliveryAddress: customerAddress.trim(),
+        deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         shippingFee: formattedShipping,
-        specialRequests: `Item: ${checkoutProduct.name} | Qty: ${qty} | Address: ${customerAddress.trim()}`,
+        specialRequests: `Item: ${checkoutProduct.name} | Qty: ${qty} | Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}`,
         status: 'Confirmed', type: 'jewellery', paymentStatus: 'Paid',
         paymentAmount: formattedTotal, paymentMethod: 'Razorpay (Online Payment)',
         transactionId: verifiedTxnId,
       };
 
-      await insertSupabaseJewelleryCustomer({ orderRef: refCode, customerName: customerName.trim(), phone: customerPhone.trim(), whatsapp: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', deliveryAddress: customerAddress.trim(), productName: `${checkoutProduct.name} (${qty} Qty)`, jewelleryId: checkoutProduct.id, itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, paymentMethod: 'Razorpay (Online Payment)', upiTransactionId: verifiedTxnId, paymentStatus: 'Paid', orderStatus: 'Processing', notes: `Express Jewellery Checkout. Address: ${customerAddress.trim()}` });
-      await insertSupabaseJewelleryBooking({ bookingRef: refCode, clientName: customerName.trim(), phone: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', productName: checkoutProduct.name, jewelleryId: checkoutProduct.id, bookingType: checkoutProduct.type === 'Rental' ? 'Rental' : 'Purchase', startDate: new Date().toISOString().split('T')[0], totalPrice: formattedTotal, location: customerAddress.trim(), paymentStatus: 'Paid', paymentMethod: 'Razorpay (Online Payment)', transactionId: verifiedTxnId, status: 'Confirmed', notes: `Express Courier. Qty: ${qty}. Address: ${customerAddress.trim()}` });
+      await insertSupabaseJewelleryCustomer({ orderRef: refCode, customerName: customerName.trim(), phone: customerPhone.trim(), whatsapp: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, productName: `${checkoutProduct.name} (${qty} Qty)`, jewelleryId: checkoutProduct.id, itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, paymentMethod: 'Razorpay (Online Payment)', upiTransactionId: verifiedTxnId, paymentStatus: 'Paid', orderStatus: 'Processing', notes: `Express Jewellery Checkout. Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}` });
+      await insertSupabaseJewelleryBooking({ bookingRef: refCode, clientName: customerName.trim(), phone: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', productName: checkoutProduct.name, jewelleryId: checkoutProduct.id, bookingType: checkoutProduct.type === 'Rental' ? 'Rental' : 'Purchase', startDate: new Date().toISOString().split('T')[0], totalPrice: formattedTotal, location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, paymentStatus: 'Paid', paymentMethod: 'Razorpay (Online Payment)', transactionId: verifiedTxnId, status: 'Confirmed', notes: `Express Courier. Qty: ${qty}. Address: ${customerAddress.trim()}` });
       await decrementProductStockInDb(checkoutProduct.id, qty);
       if (onDecrementStock) await onDecrementStock(checkoutProduct.id, qty);
       if (onAddOrder) await onAddOrder(newOrder);
 
-      setConfirmedOrderCard({ ref: refCode, productName: `${checkoutProduct.name} (${qty} Qty)`, clientName: customerName.trim(), phone: customerPhone.trim(), deliveryAddress: customerAddress.trim(), itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, transactionId: verifiedTxnId, image: checkoutProduct.images[0] });
+      setConfirmedOrderCard({ ref: refCode, productName: `${checkoutProduct.name} (${qty} Qty)`, clientName: customerName.trim(), phone: customerPhone.trim(), deliveryAddress: customerAddress.trim(), deliveryState: deliveryState.trim(), deliveryPincode: deliveryPincode.trim(), itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, transactionId: verifiedTxnId, image: checkoutProduct.images[0] });
       setCheckoutProduct(null);
     } catch (err: any) {
       console.error('Razorpay jewellery checkout error:', err);
@@ -196,7 +211,7 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   const openWhatsAppOrderReceipt = () => {
     if (!confirmedOrderCard) return;
     const cleanPhone = STUDIO_INFO.whatsapp.replace(/[^0-9]/g, '');
-    const message = `Hello Shyam Creations! I placed a Jewellery Order:\n🛍️ *Ref:* ${confirmedOrderCard.ref}\n👑 *Item:* ${confirmedOrderCard.productName}\n💰 *Total:* ${confirmedOrderCard.totalAmount}\n📲 *Txn ID:* ${confirmedOrderCard.transactionId}\n👤 *Name:* ${confirmedOrderCard.clientName}\n📞 *Phone:* ${confirmedOrderCard.phone}\n📍 *Address:* ${confirmedOrderCard.deliveryAddress}`;
+    const message = `Hello Shyam Creations! I placed a Jewellery Order:\n🛍️ *Ref:* ${confirmedOrderCard.ref}\n👑 *Item:* ${confirmedOrderCard.productName}\n💰 *Item Price:* ${confirmedOrderCard.itemPrice}\n🚚 *Shipping Charges:* ${confirmedOrderCard.shippingFee}\n💵 *Grand Total:* ${confirmedOrderCard.totalAmount}\n📲 *Txn ID:* ${confirmedOrderCard.transactionId}\n👤 *Name:* ${confirmedOrderCard.clientName}\n📞 *Phone:* ${confirmedOrderCard.phone}\n📍 *Address:* ${confirmedOrderCard.deliveryAddress}, ${confirmedOrderCard.deliveryState} - ${confirmedOrderCard.deliveryPincode}`;
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -436,16 +451,16 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1">Full Name *</label>
+                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">Full Name <span className="text-red-500">*</span></label>
                     <input type="text" placeholder="e.g. Suji Shyamala" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)]" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1">Phone *</label>
+                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">Phone <span className="text-red-500">*</span></label>
                     <input type="tel" placeholder="e.g. 9363710342" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)]" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1">Delivery Address *</label>
+                   <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">Delivery Address <span className="text-red-500">*</span></label>
                   <textarea rows={2} placeholder="Door No, Street, Area, City, Pincode" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)] resize-none" />
                 </div>
               </div>

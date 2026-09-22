@@ -582,9 +582,9 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                   {/* Full Name */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
-                      FULL NAME *
-                    </label>
+                   <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                       FULL NAME *
+                     </label>
                     <input
                       type="text"
                       required
@@ -597,9 +597,9 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
                   {/* Phone Number */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
-                      PHONE NUMBER *
-                    </label>
+                     <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                       PHONE NUMBER *
+                     </label>
                     <input
                       type="tel"
                       required
@@ -612,9 +612,9 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
                   {/* Email Address */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
-                      EMAIL ADDRESS *
-                    </label>
+                     <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                       EMAIL ADDRESS *
+                     </label>
                     <input
                       type="email"
                       required
@@ -655,7 +655,7 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
                   {/* Occasion Dropdown */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
                       OCCASION *
                     </label>
                     <select
@@ -675,9 +675,9 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
                   {/* Preferred Date */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
-                      PREFERRED DATE *
-                    </label>
+                     <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                       PREFERRED DATE *
+                     </label>
                     <input
                       type="date"
                       required
@@ -689,9 +689,9 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
                   {/* Preferred Time Slot */}
                   <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
-                      TIME SLOT (MORNING / EVENING) *
-                    </label>
+                     <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                       TIME SLOT (MORNING / EVENING) *
+                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <button
                         type="button"

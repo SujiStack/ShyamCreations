@@ -63,12 +63,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <span className="text-[10px] font-bold tracking-[0.22em] text-[var(--sc-emerald-lux)] uppercase bg-[var(--sc-emerald)]/15 px-4 py-1.5 rounded-full border border-[var(--sc-emerald)]/40">
                 ✦ Artisanal Bridal Studio · Tambaram
               </span>
-              {!isAuthenticated && (
-                <span className="text-[11px] text-[var(--sc-emerald-lux)] flex items-center gap-1.5 bg-white/[0.06] px-3 py-1 rounded-full border border-[var(--sc-emerald)]/30">
-                  <span className="material-symbols-outlined text-xs">lock</span>
-                  <span>Sign in for pricing</span>
-                </span>
-              )}
             </div>
 
             <h1 className="font-serif text-4xl md:text-5xl font-medium leading-[1.1] text-[#f6f1e7]">

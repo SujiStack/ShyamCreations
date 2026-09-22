@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CartItem, CustomerAccount, HennaBooking } from '../types';
 import { STUDIO_INFO } from '../data/mockData';
 import {
@@ -20,6 +20,16 @@ interface CartCheckoutModalProps {
   onViewOrders?: () => void;
 }
 
+const TAMIL_NADU_PIN_PREFIXES = ['60', '61', '62', '63', '64'];
+
+function calcShippingFee(state: string, pincode: string): number {
+  const isTN = /tamil\s*nadu/i.test(state || '');
+  const digits = (pincode || '').replace(/[^0-9]/g, '');
+  const isPin60 = digits.length >= 2 && TAMIL_NADU_PIN_PREFIXES.includes(digits.slice(0, 2));
+  if (isTN && isPin60) return 0;
+  return 150;
+}
+
 export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   isOpen,
   onClose,
@@ -33,6 +43,8 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [customerAddress, setCustomerAddress] = useState<string>('');
+  const [deliveryState, setDeliveryState] = useState<string>('Tamil Nadu');
+  const [deliveryPincode, setDeliveryPincode] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [confirmedReceipt, setConfirmedReceipt] = useState<{
@@ -42,6 +54,8 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
     clientName: string;
     phone: string;
     deliveryAddress: string;
+    deliveryState: string;
+    deliveryPincode: string;
     subtotal: string;
     shippingFee: string;
     totalAmount: string;
@@ -66,7 +80,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   };
 
   const subtotal = calculateSubtotal();
-  const shippingFeeNum = cartItems.length > 0 ? 50 : 0;
+  const shippingFeeNum = calcShippingFee(deliveryState, deliveryPincode);
   const grandTotal = subtotal + shippingFeeNum;
 
   const handleRazorpayCheckout = async () => {
@@ -85,7 +99,15 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       return;
     }
     if (!customerAddress.trim() || customerAddress.trim().length < 8) {
-      setFormError('Please enter full delivery address (Door No, Street, Area, City, Pincode).');
+      setFormError('Please enter full delivery address (Door No, Street, Area, City).');
+      return;
+    }
+    if (!deliveryState.trim()) {
+      setFormError('Please enter the delivery State.');
+      return;
+    }
+    if (!deliveryPincode.trim()) {
+      setFormError('Please enter the delivery Pincode.');
       return;
     }
 
@@ -102,9 +124,9 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         customerEmail: customerUser?.email || 'client@shyamcreations.com',
         customerPhone: customerPhone.trim(),
         serviceOrProductName: `Shopping Bag: ${itemsSummary}`,
-        notes: `Delivery Address: ${customerAddress.trim()}`,
+        notes: `Delivery Address: ${customerAddress.trim()}, State: ${deliveryState.trim()}, Pincode: ${deliveryPincode.trim()}`,
         jewelleryId: cartItems[0]?.productId,
-        deliveryAddress: customerAddress.trim(),
+        deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         itemsToDecrement: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       });
 
@@ -120,7 +142,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 
       const verifiedTxnId = paymentResult.razorpay_payment_id || `RZP-PAY-${Date.now()}`;
       const formattedSubtotal = `₹${subtotal.toLocaleString('en-IN')}`;
-      const formattedShipping = `₹${shippingFeeNum}`;
+      const formattedShipping = shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`;
       const formattedTotal = `₹${grandTotal.toLocaleString('en-IN')}`;
 
       // Save into Supabase 'jewellery_customers' table
@@ -130,7 +152,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         phone: customerPhone.trim(),
         whatsapp: customerPhone.trim(),
         email: customerUser?.email || 'client@shyamcreations.com',
-        deliveryAddress: customerAddress.trim(),
+        deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         productName: `Shopping Bag: ${itemsSummary}`,
         jewelleryId: cartItems[0]?.productId || 'bag-items',
         itemPrice: formattedSubtotal,
@@ -140,7 +162,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         upiTransactionId: verifiedTxnId,
         paymentStatus: 'Paid',
         orderStatus: 'Processing',
-        notes: `Bag items: ${itemsSummary} | Delivery Address: ${customerAddress.trim()}`,
+        notes: `Bag items: ${itemsSummary} | Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}`,
       });
 
       // Save into Supabase 'jewellery_bookings' table
@@ -153,8 +175,9 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         jewelleryId: cartItems[0]?.productId || 'bag-items',
         bookingType: 'Purchase',
         startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0],
         totalPrice: formattedTotal,
-        location: customerAddress.trim(),
+        location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         paymentStatus: 'Paid',
         paymentMethod: 'Razorpay (Online Payment)',
         transactionId: verifiedTxnId,
@@ -178,12 +201,12 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         serviceName: itemsSummary,
         date: new Date().toISOString().split('T')[0],
         timeSlot: 'Express Courier Dispatch',
-        location: customerAddress.trim(),
+        location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         clientName: customerName.trim(),
         clientEmail: customerUser?.email || 'client@shyamcreations.com',
         phone: customerPhone.trim(),
         wa: customerPhone.trim(),
-        deliveryAddress: customerAddress.trim(),
+        deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         shippingFee: formattedShipping,
         specialRequests: `Bag Purchase: ${itemsSummary}`,
         status: 'Confirmed',
@@ -205,6 +228,8 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         clientName: customerName.trim(),
         phone: customerPhone.trim(),
         deliveryAddress: customerAddress.trim(),
+        deliveryState: deliveryState.trim(),
+        deliveryPincode: deliveryPincode.trim(),
         subtotal: formattedSubtotal,
         shippingFee: formattedShipping,
         totalAmount: formattedTotal,
@@ -221,10 +246,20 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   const openWhatsAppBagReceipt = () => {
     if (!confirmedReceipt) return;
     const cleanPhone = STUDIO_INFO.whatsapp.replace(/[^0-9]/g, '');
-    const message = `Hello Shyam Creations Studio! I have placed an order for my Shopping Bag on your website:\n\n🛍️ *Order Ref:* ${confirmedReceipt.ref}\n👑 *Items:* ${confirmedReceipt.itemsSummary}\n💰 *Items Subtotal:* ${confirmedReceipt.subtotal}\n🚚 *Shipping:* ${confirmedReceipt.shippingFee}\n💵 *Total Paid:* ${confirmedReceipt.totalAmount}\n📲 *Verified Txn ID:* ${confirmedReceipt.transactionId}\n\n👤 *Customer Name:* ${confirmedReceipt.clientName}\n📞 *Phone:* ${confirmedReceipt.phone}\n📍 *Delivery Address:* ${confirmedReceipt.deliveryAddress}\n\nPlease confirm dispatch. Thank you!`;
+    const message = `Hello Shyam Creations Studio! I have placed an order for my Shopping Bag on your website:\n\n🛍️ *Order Ref:* ${confirmedReceipt.ref}\n👑 *Items:* ${confirmedReceipt.itemsSummary}\n💰 *Items Subtotal:* ${confirmedReceipt.subtotal}\n🚚 *Shipping Charges:* ${confirmedReceipt.shippingFee}\n💵 *Grand Total:* ${confirmedReceipt.totalAmount}\n📲 *Verified Txn ID:* ${confirmedReceipt.transactionId}\n\n👤 *Customer Name:* ${confirmedReceipt.clientName}\n📞 *Phone:* ${confirmedReceipt.phone}\n📍 *Delivery Address:* ${confirmedReceipt.deliveryAddress}, ${confirmedReceipt.deliveryState} - ${confirmedReceipt.deliveryPincode}\n\nPlease confirm dispatch. Thank you!`;
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
+
+  const shippingNote = useMemo(() => {
+    const isTN = /tamil\s*nadu/i.test(deliveryState);
+    const digits = deliveryPincode.replace(/[^0-9]/g, '');
+    const isPin60 = digits.length >= 2 && TAMIL_NADU_PIN_PREFIXES.includes(digits.slice(0, 2));
+    if (isTN && isPin60) {
+      return 'Tamil Nadu (pincode starts with 60) — Shipping is FREE';
+    }
+    return 'Outside Tamil Nadu / non-60 pincode — shipping charge: ₹150';
+  }, [deliveryState, deliveryPincode]);
 
   return (
     <div
@@ -258,7 +293,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
               </p>
             </div>
 
-            <div className="space-y-1.5 text-[var(--sc-text-dim)]">
+            <div className="space-y-2 text-[var(--sc-text-dim)]">
               <div className="flex justify-between">
                 <span>Subtotal:</span>
                 <span className="font-bold text-[var(--sc-text)]">{confirmedReceipt.subtotal}</span>
@@ -268,7 +303,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                 <span className="font-bold text-[var(--sc-emerald-dark)]">{confirmedReceipt.shippingFee}</span>
               </div>
               <div className="flex justify-between border-t border-[var(--sc-border)] pt-1.5 font-bold text-sm text-[var(--sc-text)]">
-                <span>Total Amount Paid:</span>
+                <span>Grand Total:</span>
                 <span className="text-[var(--sc-emerald-dark)]">{confirmedReceipt.totalAmount}</span>
               </div>
               <div className="flex justify-between pt-1 text-[11px] text-[var(--sc-text-dim)]">
@@ -280,7 +315,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
             <div className="bg-[var(--sc-accent-warm)] p-3 rounded-xl border border-[var(--sc-border)]/30 space-y-1 text-[11px]">
               <p className="font-bold text-[var(--sc-text)]">Deliver To:</p>
               <p className="font-semibold text-[var(--sc-emerald-dark)]">{confirmedReceipt.clientName} ({confirmedReceipt.phone})</p>
-              <p className="text-[var(--sc-text-dim)]">{confirmedReceipt.deliveryAddress}</p>
+              <p className="text-[var(--sc-text-dim)]">{confirmedReceipt.deliveryAddress}, {confirmedReceipt.deliveryState} - {confirmedReceipt.deliveryPincode}</p>
             </div>
           </div>
 
@@ -355,9 +390,20 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
             </div>
 
             <div className="border-t border-[var(--sc-border)] pt-2 flex items-center justify-between text-xs font-bold">
-              <span>Grand Total Payable (with ₹50 Shipping):</span>
-              <span className="text-base text-[var(--sc-emerald-dark)]">₹{grandTotal.toLocaleString('en-IN')}</span>
+              <span>Items Subtotal:</span>
+              <span className="text-[var(--sc-text)]">₹{subtotal.toLocaleString('en-IN')}</span>
             </div>
+            <div className="border-t border-[var(--sc-border)] pt-2 flex items-center justify-between text-xs font-bold">
+              <span>Shipping Charges:</span>
+              <span className="text-[var(--sc-emerald-dark)]">
+                {shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`}
+              </span>
+            </div>
+            <div className="border-t border-[var(--sc-border)] pt-2 flex items-center justify-between text-sm font-bold text-[var(--sc-text)]">
+              <span>Grand Total:</span>
+              <span className="text-[var(--sc-emerald-dark)] text-lg">₹{grandTotal.toLocaleString('en-IN')}</span>
+            </div>
+            <p className="text-[10px] text-[var(--sc-text-dim)] mt-1">{shippingNote}</p>
           </div>
 
           {/* Form Section: Delivery Address & Customer Details */}
@@ -369,8 +415,8 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1">
-                  Customer Full Name <span className="text-red-500">*</span>
+                <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">
+                  Customer Full Name <span className="text-red-500" title="Required">*</span>
                 </label>
                 <input
                   type="text"
@@ -382,8 +428,8 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1">
-                  Contact / WhatsApp Number <span className="text-red-500">*</span>
+                <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">
+                  Contact / WhatsApp Number <span className="text-red-500" title="Required">*</span>
                 </label>
                 <input
                   type="tel"
@@ -396,16 +442,43 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1">
-                Complete Delivery Address <span className="text-red-500">*</span>
+              <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">
+                Complete Delivery Address <span className="text-red-500" title="Required">*</span>
               </label>
               <textarea
                 rows={2}
-                placeholder="Enter Door No, Street, Area, City, and Pincode for express courier delivery"
+                placeholder="Enter Door No, Street, Area, City"
                 value={customerAddress}
                 onChange={(e) => setCustomerAddress(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] resize-none"
               />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — used to calculate delivery charges">
+                  State / Province <span className="text-red-500" title="Required">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Tamil Nadu"
+                  value={deliveryState}
+                  onChange={(e) => setDeliveryState(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — used to calculate delivery charges">
+                  Pincode <span className="text-red-500" title="Required">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 600017"
+                  value={deliveryPincode}
+                  onChange={(e) => setDeliveryPincode(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)]"
+                />
+              </div>
             </div>
           </div>
 
@@ -414,7 +487,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="font-serif font-bold text-[var(--sc-text)] text-sm md:text-base flex items-center gap-2">
                 <span className="material-symbols-outlined text-[var(--sc-emerald-dark)] text-lg">payments</span>
-                <span>2. Payment (₹{grandTotal.toLocaleString('en-IN')})</span>
+                <span>2. Payment</span>
               </h3>
             </div>
 
@@ -432,12 +505,21 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 
                 <div className="bg-[var(--sc-bg-soft)] p-3.5 rounded-xl border border-[var(--sc-border)]/30 flex items-center justify-between text-xs">
                   <div>
-                    <span className="text-[var(--sc-text-dim)] text-[11px] block">Grand Total Payable:</span>
-                    <strong className="text-base text-[var(--sc-emerald-dark)]">₹{grandTotal.toLocaleString('en-IN')}</strong>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--sc-text-dim)] block">Items Subtotal:</span>
+                      <span className="font-bold text-[var(--sc-text)]">₹{subtotal.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--sc-text-dim)]">Shipping Charges:</span>
+                      <span className="font-bold text-[var(--sc-emerald-dark)]">
+                        {shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-[var(--sc-border)] pt-1 mt-1">
+                      <span className="text-[var(--sc-text-dim)] text-[11px]">Grand Total:</span>
+                      <strong className="text-base text-[var(--sc-emerald-dark)]">₹{grandTotal.toLocaleString('en-IN')}</strong>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-stone-500 font-mono bg-stone-100 px-2 py-1 rounded">
-                    Includes ₹50 express courier shipping
-                  </span>
                 </div>
               </div>
           </div>
