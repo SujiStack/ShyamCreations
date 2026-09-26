@@ -2,7 +2,7 @@
 // Shyam Creations — Shared Type Definitions
 // =============================================================
 
-export type ViewMode = 'home' | 'product' | 'henna-booking' | 'my-bookings' | 'admin';
+export type ViewMode = 'home' | 'product' | 'henna-booking' | 'my-bookings' | 'admin' | 'check-availability';
 
 export type ServiceCategoryKey = 'mehendi' | 'jewellery';
 
@@ -51,6 +51,19 @@ export interface HennaBooking {
   paymentAmount?: string;
   paymentMethod?: string;
   transactionId?: string;
+}
+
+export interface DisabledSlot {
+  date: string;
+  timeSlot: string;
+  reason?: string;
+}
+
+export interface AvailableSlot {
+  date: string;
+  timeSlot: string;
+  isBooked: boolean;
+  isDisabled: boolean;
 }
 
 export interface JewelleryRental {

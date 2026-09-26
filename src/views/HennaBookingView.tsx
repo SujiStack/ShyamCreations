@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ViewMode, HennaBooking, CustomerAccount, PendingAuthAction } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ViewMode, HennaBooking, CustomerAccount, PendingAuthAction, DisabledSlot } from '../types';
 import { SERVICE_PACKAGES, VISIONARY_ARTISTS, STUDIO_INFO } from '../data/mockData';
 import { sendBookingConfirmationEmails, EmailSendResult } from '../lib/emailService';
 import { insertSupabaseJewelleryBooking } from '../lib/supabaseService';
@@ -73,6 +73,8 @@ interface HennaBookingViewProps {
   initialCategory?: ServiceCategoryKey;
   customerUser?: CustomerAccount | null;
   onRequireAuth?: (action: PendingAuthAction) => void;
+  hennaBookings?: HennaBooking[];
+  disabledSlots?: DisabledSlot[];
 }
 
 export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
@@ -81,6 +83,8 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
   initialCategory = 'mehendi',
   customerUser = null,
   onRequireAuth,
+  hennaBookings = [],
+  disabledSlots = [],
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategoryKey>(initialCategory);
 
@@ -139,6 +143,32 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Check if a slot is already booked
+  const isSlotBooked = useMemo(() => (date: string, timeSlot: string) => {
+    return hennaBookings.some(
+      (b) => b.date === date && b.timeSlot === timeSlot && b.status !== 'Cancelled'
+    );
+  }, [hennaBookings]);
+
+  // Check if a slot is disabled by admin
+  const isSlotDisabled = useMemo(() => (date: string, timeSlot: string) => {
+    return disabledSlots.some((s) => s.date === date && s.timeSlot === timeSlot);
+  }, [disabledSlots]);
+
+  // Check if date has any available slots
+  const isDateFullyBooked = useMemo(() => (date: string) => {
+    const slots = ['Morning Slot (09:00 AM - 01:00 PM)', 'Evening Slot (04:00 PM - 09:00 PM)'];
+    return slots.every((slot) => isSlotBooked(date, slot) || isSlotDisabled(date, slot));
+  }, [isSlotBooked, isSlotDisabled]);
+
+  // Get available slots for a date
+  const getAvailableSlots = useMemo(() => (date: string) => {
+    const slots = ['Morning Slot (09:00 AM - 01:00 PM)', 'Evening Slot (04:00 PM - 09:00 PM)'];
+    return slots
+      .filter((slot) => !isSlotBooked(date, slot) && !isSlotDisabled(date, slot))
+      .map((slot) => ({ timeSlot: slot, isBooked: isSlotBooked(date, slot), isDisabled: isSlotDisabled(date, slot) }));
+  }, [isSlotBooked, isSlotDisabled]);
+
   const handleRazorpayBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -185,6 +215,19 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
     }
     if (selectedCategory !== 'mehendi' && !selectedPackage) {
       setFormError('Please select a Service Package.');
+      return;
+    }
+
+    // Check if slot is already booked
+    if (isSlotBooked(selectedDate, selectedTime)) {
+      setFormError('This time slot is already booked. Please choose a different date or time.');
+      return;
+    }
+
+    // Check if slot is disabled by admin
+    if (isSlotDisabled(selectedDate, selectedTime)) {
+      const disabledSlot = disabledSlots.find((s) => s.date === selectedDate && s.timeSlot === selectedTime);
+      setFormError(`This time slot is not available${disabledSlot?.reason ? `: ${disabledSlot.reason}` : '.'}`);
       return;
     }
 
@@ -683,8 +726,12 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                       required
                       value={selectedDate}
                       onChange={(e) => setSelectedDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
                       className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs cursor-pointer"
                     />
+                    {isDateFullyBooked(selectedDate) && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1">⚠ This date is fully booked. Please select another date.</p>
+                    )}
                   </div>
 
                   {/* Preferred Time Slot */}
@@ -693,52 +740,54 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                        TIME SLOT (MORNING / EVENING) *
                      </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTime('Morning Slot (09:00 AM - 01:00 PM)')}
-                        className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                          selectedTime.includes('Morning')
-                            ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)] shadow-sm'
-                            : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text)] border-[var(--sc-border)] hover:border-[var(--sc-emerald)]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">🌅</span>
-                          <div>
-                            <div className="font-bold text-xs">Morning Slot</div>
-                            <div className={`text-[10px] ${selectedTime.includes('Morning') ? 'text-emerald-100' : 'text-[var(--sc-text-dim)]'}`}>
-                              09:00 AM - 01:00 PM
-                            </div>
-                          </div>
-                        </div>
-                        {selectedTime.includes('Morning') && (
-                          <span className="material-symbols-outlined text-sm">check_circle</span>
-                        )}
-                      </button>
+                      {['Morning Slot (09:00 AM - 01:00 PM)', 'Evening Slot (04:00 PM - 09:00 PM)'].map((slot) => {
+                        const isBooked = isSlotBooked(selectedDate, slot);
+                        const isDisabled = isSlotDisabled(selectedDate, slot);
+                        const isSelected = selectedTime === slot;
+                        const icon = slot.includes('Morning') ? '🌅' : '🌙';
+                        const label = slot.includes('Morning') ? 'Morning Slot' : 'Evening Slot';
+                        const timeRange = slot.includes('Morning') ? '09:00 AM - 01:00 PM' : '04:00 PM - 09:00 PM';
 
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTime('Evening Slot (04:00 PM - 09:00 PM)')}
-                        className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                          selectedTime.includes('Evening')
-                            ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)] shadow-sm'
-                            : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text)] border-[var(--sc-border)] hover:border-[var(--sc-emerald)]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">🌙</span>
-                          <div>
-                            <div className="font-bold text-xs">Evening Slot</div>
-                            <div className={`text-[10px] ${selectedTime.includes('Evening') ? 'text-emerald-100' : 'text-[var(--sc-text-dim)]'}`}>
-                              04:00 PM - 09:00 PM
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => {
+                              if (!isBooked && !isDisabled) setSelectedTime(slot);
+                            }}
+                            disabled={isBooked || isDisabled}
+                            className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
+                              isBooked || isDisabled
+                                ? 'bg-[#f5f0eb] text-[#a39c91] border-[#e8dcc4] cursor-not-allowed'
+                                : isSelected
+                                ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)] shadow-sm'
+                                : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text)] border-[var(--sc-border)] hover:border-[var(--sc-emerald)]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl">{icon}</span>
+                              <div>
+                                <div className="font-bold text-xs">{label}</div>
+                                <div className={`text-[10px] ${isSelected ? 'text-emerald-100' : 'text-[var(--sc-text-dim)]'}`}>
+                                  {timeRange}
+                                </div>
+                                {(isBooked || isDisabled) && (
+                                  <div className="text-[10px] text-red-500 font-medium mt-0.5">
+                                    {isBooked ? '✓ Already Booked' : '✕ Slot Disabled'}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                        {selectedTime.includes('Evening') && (
-                          <span className="material-symbols-outlined text-sm">check_circle</span>
-                        )}
-                      </button>
+                            {isSelected && (
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
+                    {getAvailableSlots(selectedDate).length === 0 && !isDateFullyBooked(selectedDate) && (
+                      <p className="text-[11px] text-amber-600 font-medium mt-1">No slots available for this date.</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -887,9 +936,9 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                           <div>
                             <span className="text-[var(--sc-text-dim)] text-[11px] block">Amount Payable Now:</span>
                             <strong className="text-lg text-[var(--sc-emerald-dark)]">{currentPayableAmount}</strong>
-                            {paymentOption === 'advance' && (
-                              <p className="text-[10px] text-[var(--sc-text-dim)]">Remaining balance ({srvPrice} - {defaultAdvance}) can be paid after service completion.</p>
-                            )}
+{paymentOption === 'advance' && (
+                      <p className="text-[10px] text-[var(--sc-emerald-dark)] font-medium">Amount to be paid after service: {srvPrice}</p>
+                    )}
                           </div>
                           {/* <div className="text-right">
                             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">

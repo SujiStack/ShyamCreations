@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ViewMode, Product, HennaBooking, CustomerAccount, PendingAuthAction } from '../types';
+import { ViewMode, Product, HennaBooking, CustomerAccount } from '../types';
 import { STUDIO_INFO } from '../data/mockData';
 import {
   insertSupabaseJewelleryCustomer,
@@ -16,7 +16,6 @@ interface JewelleryProductViewProps {
   onAddOrder?: (order: HennaBooking) => Promise<{ success: boolean; isConfigured: boolean; error?: string }>;
   isAuthenticated?: boolean;
   customerUser?: CustomerAccount | null;
-  onRequireAuth?: (pendingAction?: PendingAuthAction) => void;
   onAddToCart?: (product: Product, quantity?: number) => void;
   onToggleWishlist?: (product: Product) => void;
   wishlistIds?: string[];
@@ -34,7 +33,6 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   onAddOrder,
   isAuthenticated = false,
   customerUser = null,
-  onRequireAuth,
   onAddToCart,
   onToggleWishlist,
   wishlistIds = [],
@@ -100,16 +98,9 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     return `₹${Math.round(num * 1.18).toLocaleString('en-IN')}`;
   };
 
-  const handlePriceClick = (e: React.MouseEvent, prod: Product) => {
-    e.stopPropagation();
-    if (!isAuthenticated && onRequireAuth) onRequireAuth({ targetView: 'product', targetProduct: prod, action: 'view-price' });
-  };
-
   const handleWishlistClick = (e: React.MouseEvent, prod: Product) => {
     e.stopPropagation();
-    if (!isAuthenticated && onRequireAuth) {
-      onRequireAuth({ targetView: 'product', targetProduct: prod, action: 'wishlist' });
-    } else if (onToggleWishlist) {
+    if (onToggleWishlist) {
       onToggleWishlist(prod);
       showToast(!wishlistIds.includes(prod.id) ? `❤️ Added ${prod.name} to wishlist` : 'Removed from wishlist');
     }
@@ -117,7 +108,6 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
 
   const handleAddToCartClick = (e: React.MouseEvent, prod: Product) => {
     e.stopPropagation();
-    if (!isAuthenticated && onRequireAuth) { onRequireAuth({ targetView: 'product', targetProduct: prod, action: 'cart' }); return; }
     if ((prod.stock ?? 1) <= 0) { showToast(`⚠️ ${prod.name} is out of stock.`); return; }
     const qty = getProductQty(prod.id);
     if (onAddToCart) { onAddToCart(prod, qty); showToast(`🛍️ Added ${qty}x ${prod.name} to bag!`); }
@@ -125,7 +115,6 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
 
   const handleBuyNowAndProceed = (prod: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (!isAuthenticated && onRequireAuth) { onRequireAuth({ targetView: 'product', targetProduct: prod, action: 'buy' }); return; }
     if ((prod.stock ?? 1) <= 0) { showToast(`⚠️ ${prod.name} is out of stock.`); return; }
     setCheckoutProduct(prod); setFormError(null);
     if (customerUser) { setCustomerName(customerUser.name || ''); setCustomerPhone(customerUser.phone || ''); }
@@ -230,12 +219,6 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         <div>
           <div className="flex items-center gap-3">
             <span className="text-xs font-bold tracking-[0.25em] text-[var(--sc-emerald-dark)] uppercase">Jewellery Vault</span>
-            {!isAuthenticated && (
-              <span className="text-[11px] text-[var(--sc-emerald-dark)] bg-[var(--sc-accent-warm)] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                <span className="material-symbols-outlined text-xs">lock</span>
-                <span>Sign in for Prices</span>
-              </span>
-            )}
           </div>
           <h1 className="font-serif text-3xl md:text-4xl font-bold text-[var(--sc-text)] mt-1">Bridal Jewellery Collection</h1>
         </div>
@@ -312,19 +295,11 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                 <div className="p-4 space-y-3">
                   <h3 className="font-semibold text-base text-[var(--sc-text)] group-hover:text-[var(--sc-emerald-dark)] transition-colors leading-snug line-clamp-2">{prod.name}</h3>
 
-                  {!isAuthenticated ? (
-                    <button type="button" onClick={(e) => handlePriceClick(e, prod)}
-                      className="w-full py-2.5 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald)] text-[var(--sc-emerald-dark)] hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border border-[var(--sc-border)]/50 cursor-pointer">
-                      <span className="material-symbols-outlined text-sm">lock</span>
-                      <span>Sign In to View Price</span>
-                    </button>
-                  ) : (
-                    <div className="flex items-baseline gap-2">
+                  <div className="flex items-baseline gap-2">
                       <span className="text-2xl font-black text-[var(--sc-text)]">{prod.price}</span>
                       <span className="text-sm text-[var(--sc-text-dimmer)] line-through">{getMRP(prod.price)}</span>
                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md ml-auto">98% OFF</span>
                     </div>
-                  )}
 
                   {inStock && (
                     <div className="flex items-center justify-between bg-[var(--sc-surface)] px-3 py-1.5 rounded-xl border border-[var(--sc-border)]/40 text-xs font-bold">
@@ -378,20 +353,13 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
               <div className="aspect-square bg-[var(--sc-bg-soft)] rounded-2xl p-4 border border-[var(--sc-border)] flex items-center justify-center">
                 <img src={selectedDetailProduct.images[0]} alt={selectedDetailProduct.name} className="max-h-full object-contain" />
               </div>
-              {!isAuthenticated ? (
-                <div className="p-3 bg-[var(--sc-bg-soft)] rounded-2xl border border-[var(--sc-border)]/40 flex items-center justify-between">
-                  <p className="text-xs font-bold text-[var(--sc-text)]">Sign in to unlock pricing</p>
-                  <button onClick={(e) => handlePriceClick(e, selectedDetailProduct)} className="px-3.5 py-2 bg-[var(--sc-emerald-dark)] text-white rounded-xl text-xs font-bold cursor-pointer">Sign In</button>
-                </div>
-              ) : (
-                <div className="flex items-baseline gap-3">
+              <div className="flex items-baseline gap-3">
                   <span className="text-2xl font-black text-[var(--sc-text)]">{selectedDetailProduct.price}</span>
                   <span className="text-sm text-[var(--sc-text-dimmer)] line-through">{getMRP(selectedDetailProduct.price)}</span>
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${inStock ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
                     {inStock ? `${maxStock} in stock` : 'Out of stock'}
                   </span>
                 </div>
-              )}
               <div className="space-y-2.5 pt-2">
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={(e) => { handleAddToCartClick(e, selectedDetailProduct); setSelectedDetailProduct(null); }} disabled={!inStock}

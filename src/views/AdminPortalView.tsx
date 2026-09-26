@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ViewMode, Product, HennaBooking, JewelleryRental, JewelleryCustomer, JewelleryBooking } from '../types';
+import { ViewMode, Product, HennaBooking, JewelleryRental, JewelleryCustomer, JewelleryBooking, DisabledSlot } from '../types';
 import {
   isSupabaseConfigured,
   loginSupabaseAdmin,
@@ -31,6 +31,7 @@ interface AdminPortalViewProps {
   products: Product[];
   hennaBookings?: HennaBooking[];
   jewelleryRentals?: JewelleryRental[];
+  disabledSlots?: DisabledSlot[];
   onNavigate: (view: ViewMode) => void;
   onAddProduct: (product: Product) => void;
   onUpdateProduct: (product: Product) => void;
@@ -41,12 +42,14 @@ interface AdminPortalViewProps {
   onDeleteJewelleryRental?: (id: string) => void;
   onSelectProduct?: (product: Product) => void;
   onRefreshJewellery?: () => Promise<void>;
+  onUpdateDisabledSlots?: (slots: DisabledSlot[]) => void;
 }
 
 export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   products,
   hennaBookings = [],
   jewelleryRentals = [],
+  disabledSlots = [],
   onNavigate,
   onAddProduct,
   onUpdateProduct,
@@ -57,6 +60,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   onDeleteJewelleryRental,
   onSelectProduct,
   onRefreshJewellery,
+  onUpdateDisabledSlots,
 }) => {
   // Admin Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -66,11 +70,17 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
   const [adminUser, setAdminUser] = useState<any>(null);
 
-  const [adminSection, setAdminSection] = useState<'INVENTORY' | 'HENNA' | 'RENTALS' | 'CUSTOMERS' | 'JEWELLERY_BOOKINGS'>('INVENTORY');
+  const [adminSection, setAdminSection] = useState<'INVENTORY' | 'HENNA' | 'RENTALS' | 'CUSTOMERS' | 'JEWELLERY_BOOKINGS' | 'SLOTS'>('INVENTORY');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'SALE' | 'RENTAL'>('ALL');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // Disabled Slots State
+  const [dbDisabledSlots, setDbDisabledSlots] = useState<DisabledSlot[]>(disabledSlots);
+  const [newSlotDate, setNewSlotDate] = useState<string>('');
+  const [newSlotTime, setNewSlotTime] = useState<string>('Morning Slot (09:00 AM - 01:00 PM)');
+  const [newSlotReason, setNewSlotReason] = useState<string>('');
 
   // Database state fetched upon login or manual refresh
   const [dbHennaBookings, setDbHennaBookings] = useState<HennaBooking[]>(hennaBookings);
@@ -89,6 +99,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       setDbProducts(products);
     }
   }, [products]);
+
+  useEffect(() => {
+    if (disabledSlots) {
+      setDbDisabledSlots(disabledSlots);
+    }
+  }, [disabledSlots]);
 
   // Jewellery Customers State
   const [customersList, setCustomersList] = useState<JewelleryCustomer[]>([]);
@@ -766,6 +782,22 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               </span>
               <span className="px-2 py-0.5 bg-[#C08A34]/20 text-[#E0B45F] rounded-full text-[10px] font-bold">
                 {jewelleryBookingsList.length}
+              </span>
+            </button>
+            <button
+              onClick={() => setAdminSection('SLOTS')}
+              className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-colors ${
+                adminSection === 'SLOTS'
+                  ? 'bg-[#5B3A1A] text-white font-bold shadow'
+                  : 'hover:bg-[var(--sc-surface-alt-card)] text-[#ded8ce]'
+              }`}
+            >
+              <span className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-base">block</span>
+                <span>Slot Management</span>
+              </span>
+              <span className="px-2 py-0.5 bg-[#E0B45F]/20 text-[#E0B45F] rounded-full text-[10px] font-bold">
+                {dbDisabledSlots.length}
               </span>
             </button>
             <button
@@ -1692,6 +1724,160 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         No jewellery bookings stored yet in `jewellery_bookings`. New rental reservations & package bookings will appear here automatically!
                       </td>
                     </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 6: Slot Management */}
+        {adminSection === 'SLOTS' && (
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-2xl border border-[var(--sc-border-dark)] overflow-hidden space-y-5 p-6 shadow-xl">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[var(--sc-border-dark)] pb-4">
+              <div>
+                <h3 className="font-serif text-xl font-bold text-white flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#E0B45F]">block</span>
+                  <span>Slot Management - Disable/Enable Time Slots</span>
+                </h3>
+                <p className="text-xs text-[#8A7F72] mt-0.5">
+                  Disabled slots cannot be booked by customers. Manage availability for Mehendi appointments.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewSlotDate('');
+                  setNewSlotTime('Morning Slot (09:00 AM - 01:00 PM)');
+                  setNewSlotReason('');
+                }}
+                className="px-4 py-2 bg-[#E0B45F] text-[var(--sc-surface-alt)] font-bold text-xs rounded-xl hover:bg-[#D4A24C] transition-all flex items-center gap-2 shadow"
+              >
+                <span className="material-symbols-outlined text-base">add</span>
+                <span>ADD DISABLED SLOT</span>
+              </button>
+            </div>
+
+            {/* Add Disabled Slot Form */}
+            <div className="bg-[var(--sc-surface-alt)] p-4 rounded-xl border border-[var(--sc-border-dark)]">
+              <h4 className="font-semibold text-white mb-3">Add New Disabled Slot</h4>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8A7F72]">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={newSlotDate}
+                    onChange={(e) => setNewSlotDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-3 py-2 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-lg text-white text-xs focus:outline-none focus:border-[#E0B45F]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8A7F72]">Time Slot *</label>
+                  <select
+                    value={newSlotTime}
+                    onChange={(e) => setNewSlotTime(e.target.value)}
+                    className="w-full px-3 py-2 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-lg text-white text-xs focus:outline-none focus:border-[#E0B45F]"
+                  >
+                    <option value="Morning Slot (09:00 AM - 01:00 PM)">Morning Slot (09:00 AM - 01:00 PM)</option>
+                    <option value="Evening Slot (04:00 PM - 09:00 PM)">Evening Slot (04:00 PM - 09:00 PM)</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8A7F72]">Reason (Optional)</label>
+                  <input
+                    type="text"
+                    value={newSlotReason}
+                    onChange={(e) => setNewSlotReason(e.target.value)}
+                    placeholder="e.g. Studio maintenance, Private event"
+                    className="w-full px-3 py-2 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-lg text-white text-xs focus:outline-none focus:border-[#E0B45F]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8A7F72]">&nbsp;</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newSlotDate) return;
+                      const newSlot: DisabledSlot = {
+                        date: newSlotDate,
+                        timeSlot: newSlotTime,
+                        reason: newSlotReason || undefined,
+                      };
+                      const updated = [...dbDisabledSlots, newSlot];
+                      setDbDisabledSlots(updated);
+                      onUpdateDisabledSlots?.(updated);
+                      setNewSlotDate('');
+                      setNewSlotTime('Morning Slot (09:00 AM - 01:00 PM)');
+                      setNewSlotReason('');
+                    }}
+                    className="w-full py-2 bg-[#E0B45F] text-[var(--sc-surface-alt)] font-bold text-xs rounded-xl hover:bg-[#D4A24C] transition-all flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-sm">block</span>
+                    <span>Disable Slot</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Disabled Slots Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[var(--sc-surface-alt)] text-[#8A7F72] uppercase tracking-wider font-bold border-b border-[var(--sc-border-dark)]">
+                  <tr>
+                    <th className="p-3.5">Date</th>
+                    <th className="p-3.5">Time Slot</th>
+                    <th className="p-3.5">Reason</th>
+                    <th className="p-3.5">Status</th>
+                    <th className="p-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--sc-border-dark)]">
+                  {dbDisabledSlots.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-[#8A7F72] text-xs">
+                        No disabled slots configured. All time slots are available for booking.
+                      </td>
+                    </tr>
+                  ) : (
+                    dbDisabledSlots
+                      .sort((a, b) => {
+                        const dateCompare = a.date.localeCompare(b.date);
+                        if (dateCompare !== 0) return dateCompare;
+                        return a.timeSlot.localeCompare(b.timeSlot);
+                      })
+                      .map((slot, idx) => (
+                        <tr key={idx} className="hover:bg-[#262b28] transition-colors">
+                          <td className="p-3.5 font-semibold text-white">
+                            {new Date(slot.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="p-3.5 text-[#ded8ce]">
+                            {slot.timeSlot}
+                          </td>
+                          <td className="p-3.5 text-xs text-[#8A7F72] max-w-xs truncate">
+                            {slot.reason || '—'}
+                          </td>
+                          <td className="p-3.5">
+                            <span className="px-2.5 py-1 bg-red-500/20 text-red-400 border border-red-500/30 rounded-full text-[10px] font-bold">
+                              Disabled
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <button
+                              onClick={() => {
+                                const updated = dbDisabledSlots.filter((_, i) => i !== idx);
+                                setDbDisabledSlots(updated);
+                                onUpdateDisabledSlots?.(updated);
+                              }}
+                              className="p-1.5 hover:bg-green-500/20 text-green-400 rounded transition-colors"
+                              title="Enable Slot (Remove from disabled list)"
+                            >
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
                   )}
                 </tbody>
               </table>

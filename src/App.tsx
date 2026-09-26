@@ -7,6 +7,7 @@ import {
   CustomerAccount,
   CartItem,
   PendingAuthAction,
+  DisabledSlot,
 } from './types';
 import {
   INITIAL_PRODUCTS,
@@ -19,6 +20,7 @@ import { HomeView } from './views/HomeView';
 import { JewelleryProductView } from './views/JewelleryProductView';
 import { HennaBookingView, ServiceCategoryKey } from './views/HennaBookingView';
 import { MyBookingsView } from './views/MyBookingsView';
+import { CheckAvailabilityView } from './views/CheckAvailabilityView';
 import { AdminPortalView } from './views/AdminPortalView';
 import { CustomerAuthModal } from './components/CustomerAuthModal';
 import { CartDrawer } from './components/CartDrawer';
@@ -52,7 +54,8 @@ export function App() {
             return dbLike;
           }
         }
-      }
+      }                                    
+
     } catch (e) {
       console.warn('Failed to parse cached jewellery products:', e);
     }
@@ -65,6 +68,14 @@ export function App() {
   const [jewelleryRentals, setJewelleryRentals] = useState<JewelleryRental[]>(
     INITIAL_JEWELLERY_RENTALS
   );
+  const [disabledSlots, setDisabledSlots] = useState<DisabledSlot[]>(() => {
+    try {
+      const stored = localStorage.getItem('shyam_disabled_slots');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Customer Authentication & Account State
   const [customerUser, setCustomerUser] = useState<CustomerAccount | null>(() => {
@@ -517,6 +528,15 @@ export function App() {
     }
   };
 
+  const handleUpdateDisabledSlots = (slots: DisabledSlot[]) => {
+    setDisabledSlots(slots);
+    try {
+      localStorage.setItem('shyam_disabled_slots', JSON.stringify(slots));
+    } catch (e) {
+      console.warn('Failed to save disabled slots:', e);
+    }
+  };
+
   const handleAddProduct = (newProd: Product) => {
     setProducts((prev) => [newProd, ...prev]);
   };
@@ -574,7 +594,6 @@ export function App() {
             products={products}
             isAuthenticated={isAuthenticated}
             customerUser={customerUser}
-            onRequireAuth={handleOpenAuthModal}
             onAddToCart={handleAddToCart}
             onToggleWishlist={handleToggleWishlist}
             wishlistIds={wishlistIds}
@@ -590,7 +609,6 @@ export function App() {
             onAddOrder={handleAddHennaBooking}
             isAuthenticated={isAuthenticated}
             customerUser={customerUser}
-            onRequireAuth={handleOpenAuthModal}
             onAddToCart={handleAddToCart}
             onToggleWishlist={handleToggleWishlist}
             wishlistIds={wishlistIds}
@@ -608,6 +626,8 @@ export function App() {
             initialCategory={selectedCategory}
             customerUser={customerUser}
             onRequireAuth={handleOpenAuthModal}
+            hennaBookings={hennaBookings}
+            disabledSlots={disabledSlots}
           />
         )}
 
@@ -622,11 +642,20 @@ export function App() {
           />
         )}
 
+        {currentView === 'check-availability' && (
+          <CheckAvailabilityView
+            onNavigate={handleNavigate}
+            hennaBookings={hennaBookings}
+            disabledSlots={disabledSlots}
+          />
+        )}
+
         {currentView === 'admin' && (
           <AdminPortalView
             products={products}
             hennaBookings={hennaBookings}
             jewelleryRentals={jewelleryRentals}
+            disabledSlots={disabledSlots}
             onNavigate={handleNavigate}
             onAddProduct={handleAddProduct}
             onUpdateProduct={handleUpdateProduct}
@@ -635,6 +664,7 @@ export function App() {
             onDeleteHennaBooking={handleDeleteHennaBooking}
             onSelectProduct={handleSelectProduct}
             onRefreshJewellery={handleRefreshJewellery}
+            onUpdateDisabledSlots={handleUpdateDisabledSlots}
           />
         )}
       </div>

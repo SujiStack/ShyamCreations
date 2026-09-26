@@ -1,5 +1,5 @@
 import React from 'react';
-import { ViewMode, Product, PendingAuthAction } from '../types';
+import { ViewMode, Product } from '../types';
 import { STUDIO_INFO, SERVICE_PACKAGES } from '../data/mockData';
 import { ServiceCategoryKey } from './HennaBookingView';
 
@@ -8,7 +8,6 @@ interface HomeViewProps {
   onSelectProduct?: (product: Product) => void;
   products?: Product[];
   isAuthenticated?: boolean;
-  onRequireAuth?: (pendingAction?: PendingAuthAction) => void;
   onAddToCart?: (product: Product) => void;
   onToggleWishlist?: (product: Product) => void;
   wishlistIds?: string[];
@@ -19,33 +18,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onSelectProduct,
   products = [],
   isAuthenticated = false,
-  onRequireAuth,
   onAddToCart,
   onToggleWishlist,
   wishlistIds = [],
 }) => {
   const handleServiceClick = (category: ServiceCategoryKey) => {
     if (category === 'mehendi') {
-      if (!isAuthenticated && onRequireAuth) {
-        onRequireAuth({ targetView: 'henna-booking', targetCategory: 'mehendi', action: 'mehendi' });
-      } else {
-        onNavigate('henna-booking', 'mehendi');
-      }
+      onNavigate('henna-booking', 'mehendi');
     } else {
-      if (!isAuthenticated && onRequireAuth) {
-        onRequireAuth({ targetView: 'product', action: 'buy' });
-      } else {
-        onNavigate('product');
-      }
-    }
-  };
-
-  const handlePriceClick = (e: React.MouseEvent, pendingAction: PendingAuthAction) => {
-    e.stopPropagation();
-    if (!isAuthenticated) {
-      if (onRequireAuth) onRequireAuth(pendingAction);
-    } else if (pendingAction.targetView) {
-      onNavigate(pendingAction.targetView, pendingAction.targetCategory as ServiceCategoryKey);
+      onNavigate('product');
     }
   };
 
@@ -78,13 +59,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <div className="flex flex-wrap gap-3.5 pt-1">
               <button
                 id="btn-hero-book-appointment"
-                onClick={() => {
-                  if (!isAuthenticated && onRequireAuth) {
-                    onRequireAuth({ targetView: 'henna-booking', targetCategory: 'mehendi', action: 'mehendi' });
-                  } else {
-                    onNavigate('henna-booking', 'mehendi');
-                  }
-                }}
+                onClick={() => onNavigate('henna-booking', 'mehendi')}
                 className="btn-emerald px-6 py-3.5 text-white font-bold rounded-xl flex items-center gap-2 text-xs tracking-[0.14em] uppercase cursor-pointer"
               >
                 <span className="material-symbols-outlined text-base">calendar_add_on</span>
@@ -93,13 +68,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
               <button
                 id="btn-hero-explore-jewellery"
-                onClick={() => {
-                  if (!isAuthenticated && onRequireAuth) {
-                    onRequireAuth({ targetView: 'product', action: 'buy' });
-                  } else {
-                    onNavigate('product');
-                  }
-                }}
+                onClick={() => onNavigate('product')}
                 className="btn-emerald-outline px-6 py-3.5 rounded-xl flex items-center gap-2 uppercase cursor-pointer"
               >
                 <span className="material-symbols-outlined text-base">diamond</span>
@@ -196,15 +165,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <p className="text-xs text-[var(--sc-text-dim)] mt-3 leading-relaxed">Intricate Marwari, Arabic, and South Indian bridal mehendi with 100% organic dark stain guarantee.</p>
             </div>
             <div className="pt-8 flex items-center justify-between border-t border-[var(--sc-border)]/50 mt-6">
-              {!isAuthenticated ? (
-                <button onClick={(e) => handlePriceClick(e, { targetView: 'henna-booking', targetCategory: 'mehendi', action: 'view-price' })}
-                  className="px-3 py-1.5 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald)] text-[var(--sc-emerald-dark)] hover:text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border border-[var(--sc-border)] cursor-pointer">
-                  <span className="material-symbols-outlined text-sm">lock</span>
-                  <span>Sign In to View Price</span>
-                </button>
-              ) : (
-                <span className="text-xs font-bold text-[var(--sc-emerald-dark)]">From ₹200 · Full ₹2,000+</span>
-              )}
+              <span className="text-xs font-bold text-[var(--sc-emerald-dark)]">From ₹200 · Full ₹2,000+</span>
               <div className="flex items-center gap-1 text-xs font-bold text-[var(--sc-emerald-dark)] group-hover:translate-x-1 transition-transform">
                 <span>Book</span><span className="material-symbols-outlined text-base">arrow_forward</span>
               </div>
@@ -222,15 +183,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <p className="text-xs text-[var(--sc-text-dim)] mt-3 leading-relaxed">Heritage Kundan sets, Polki chokers, and temple jewelry with trial appointments and online purchase.</p>
             </div>
             <div className="pt-8 flex items-center justify-between border-t border-[var(--sc-border)]/50 mt-6">
-              {!isAuthenticated ? (
-                <button onClick={(e) => handlePriceClick(e, { targetView: 'product', action: 'view-price' })}
-                  className="px-3 py-1.5 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald)] text-[var(--sc-emerald-dark)] hover:text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border border-[var(--sc-border)] cursor-pointer">
-                  <span className="material-symbols-outlined text-sm">lock</span>
-                  <span>Sign In to View Price</span>
-                </button>
-              ) : (
-                <span className="text-xs font-bold text-[var(--sc-emerald-dark)]">Rentals from ₹1,200/day</span>
-              )}
+              <span className="text-xs font-bold text-[var(--sc-emerald-dark)]">Rentals from ₹1,200/day</span>
               <div className="flex items-center gap-1 text-xs font-bold text-[var(--sc-emerald-dark)] group-hover:translate-x-1 transition-transform">
                 <span>Explore</span><span className="material-symbols-outlined text-base">arrow_forward</span>
               </div>
@@ -265,7 +218,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     <span className="absolute top-3 left-3 px-2.5 py-1 bg-[var(--sc-surface-alt)]/90 text-[#fcf9f5] text-[9px] uppercase font-bold tracking-widest rounded-full shadow-sm backdrop-blur-xs">{prod.category}</span>
                     <span className="absolute top-3 right-3 px-2.5 py-1 bg-[var(--sc-emerald)] text-white text-[9px] font-bold rounded-full shadow-sm">{prod.type}</span>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); if (!isAuthenticated && onRequireAuth) onRequireAuth({ targetProduct: prod, action: 'wishlist' }); else if (onToggleWishlist) onToggleWishlist(prod); }}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); if (onToggleWishlist) onToggleWishlist(prod); }}
                       className={`absolute bottom-3 right-3 w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md transition-transform active:scale-90 shadow-md ${isWishlisted ? 'bg-rose-50 text-rose-600' : 'bg-black/50 text-white hover:text-rose-400'}`}
                       title={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}>
                       <span className="material-symbols-outlined text-lg">{isWishlisted ? 'favorite' : 'favorite_border'}</span>
@@ -278,15 +231,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   </div>
                   <div className="p-5 space-y-2 flex-1 flex flex-col justify-between">
                     <h3 className="font-serif text-lg font-bold text-[var(--sc-text)] group-hover:text-[var(--sc-emerald-dark)] transition-colors">{prod.name}</h3>
-                    {!isAuthenticated ? (
-                      <button type="button" onClick={(e) => handlePriceClick(e, { targetView: 'product', targetProduct: prod, action: 'view-price' })}
-                        className="px-3 py-1.5 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald)] text-[var(--sc-emerald-dark)] hover:text-white rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 border border-[var(--sc-border)] cursor-pointer">
-                        <span className="material-symbols-outlined text-xs">lock</span>
-                        <span>Sign In for Price</span>
-                      </button>
-                    ) : (
-                      <span className="text-sm font-bold text-[var(--sc-emerald-dark)]">{prod.type === 'Rental' ? prod.rentalPriceDay : prod.price}</span>
-                    )}
+                    <span className="text-sm font-bold text-[var(--sc-emerald-dark)]">{prod.type === 'Rental' ? prod.rentalPriceDay : prod.price}</span>
                     <span className="text-xs font-bold text-[var(--sc-text)] underline group-hover:text-[var(--sc-emerald-dark)]">View Details</span>
                   </div>
                 </div>

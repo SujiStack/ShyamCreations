@@ -19,7 +19,6 @@ export interface BookingEmailParams {
 
 export interface EmailSendResult {
   clientEmailSent: boolean;
-  adminEmailSent: boolean;
   message: string;
   error?: string;
 }
@@ -44,23 +43,20 @@ function cleanEnv(val: string | undefined, fallback: string): string {
 }
 
 /**
- * Send booking confirmation emails to both customer and admin using EmailJS
+ * Send booking confirmation email to customer only (admin email removed)
  */
 export async function sendBookingConfirmationEmails(
   booking: BookingEmailParams
 ): Promise<EmailSendResult> {
   const serviceId = cleanEnv(import.meta.env.VITE_EMAILJS_SERVICE_ID, 'service_xv40d4h');
-  const clientTemplateId = cleanEnv(import.meta.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID || import.meta.env.VITE_EMAILJS_TEMPLATE_ID, 'template_v2mtogj'); // Customer confirmation template
-  const adminTemplateId = cleanEnv(import.meta.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID, 'template_fqn6e0q');  // Admin notification template
+  const clientTemplateId = cleanEnv(import.meta.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID || import.meta.env.VITE_EMAILJS_TEMPLATE_ID, 'template_v2mtogj');
   const publicKey = cleanEnv(import.meta.env.VITE_EMAILJS_PUBLIC_KEY, 'HQgSNXufMjsC5ZeT4');
-  const adminEmail = cleanEnv(import.meta.env.VITE_ADMIN_EMAIL, 'shyamcreationstudio@gmail.com');
 
   const emailjs = await getEmailJS();
 
   if (!emailjs) {
     return {
       clientEmailSent: false,
-      adminEmailSent: false,
       message: 'EmailJS library dynamic loader failed.',
     };
   }
@@ -125,13 +121,11 @@ export async function sendBookingConfirmationEmails(
     intro_text: `Your appointment for ${booking.serviceName} on ${booking.date} at ${booking.timeSlot} is confirmed. Payment Status: ${booking.paymentStatus || 'Advance Received'} (${booking.paymentAmount || ''}). Thank you for choosing Shyam Creations Studio!`,
     badge_display: 'none',
 
-    admin_email: adminEmail,
     studio_name: 'Shyam Creations Studio',
     studio_phone: '+91 9363710342',
-    message: `New booking confirmation for ${booking.serviceName} on ${booking.date} at ${booking.timeSlot}. Reference: ${booking.ref}`,
   };
 
-  // 1. Dispatch Customer Confirmation Email
+  // Dispatch Customer Confirmation Email only
   let clientSent = false;
   let clientErr = '';
 
@@ -139,7 +133,6 @@ export async function sendBookingConfirmationEmails(
     const customerEmailClean = booking.clientEmail.trim();
     const customerParams = {
       ...baseParams,
-      // Target recipient parameters for EmailJS template
       to_email: customerEmailClean,
       customer_email: customerEmailClean,
       client_email: customerEmailClean,
@@ -157,22 +150,18 @@ export async function sendBookingConfirmationEmails(
       userEmail: customerEmailClean,
       toEmail: customerEmailClean,
       recipientEmail: customerEmailClean,
-      admin_email: customerEmailClean, // Overrides {{admin_email}} if template uses it for routing
 
       customer_name: booking.clientName,
       client_name: booking.clientName,
       user_name: booking.clientName,
       to_name: booking.clientName,
-      name: 'Shyam Creations Studio', // Matches {{name}} in EmailJS From Name field
-
+      name: 'Shyam Creations Studio',
       from_name: 'Shyam Creations Studio',
       sender_name: 'Shyam Creations Studio',
       studio_name: 'Shyam Creations Studio',
-      studio_email: adminEmail,
-      reply_to: adminEmail,
     };
 
-    // Attempt 1: Try primary clientTemplateId (template_v2mtogj)
+    // Attempt 1: Try primary clientTemplateId
     if (clientTemplateId) {
       try {
         console.info(`[EmailJS] Dispatching Customer Confirmation (${clientTemplateId}) to: ${customerEmailClean}`);
@@ -192,71 +181,13 @@ export async function sendBookingConfirmationEmails(
         }
       }
     }
-
-    // Attempt 2 Fallback: If primary template failed or was not found, fallback to verified active template (adminTemplateId)
-    if (!clientSent && adminTemplateId) {
-      try {
-        console.info(`[EmailJS] Customer Fallback: Sending via verified template (${adminTemplateId}) to: ${customerEmailClean}`);
-        const fallbackRes = await emailjs.send(serviceId, adminTemplateId, customerParams, publicKey);
-        console.log('[EmailJS] Customer Email Fallback Success:', fallbackRes);
-        clientSent = true;
-        clientErr = ''; // Clear error as fallback succeeded
-      } catch (fallbackErr: any) {
-        const fallbackErrStr = fallbackErr?.text || fallbackErr?.message || (typeof fallbackErr === 'object' ? JSON.stringify(fallbackErr) : String(fallbackErr));
-        console.error('[EmailJS] Customer Email Fallback also Failed:', fallbackErrStr);
-        clientErr = clientErr ? `Primary: ${clientErr} | Fallback: ${fallbackErrStr}` : fallbackErrStr;
-      }
-    }
   } else {
     clientErr = 'Missing customer email';
   }
 
-  // Small pause between EmailJS API requests
-  await new Promise(resolve => setTimeout(resolve, 300));
-
-  // 2. Dispatch Admin Notification Email automatically
-  let adminSent = false;
-  let adminErr = '';
-
-  if (adminTemplateId) {
-    const adminParams = {
-      ...baseParams,
-      to_email: adminEmail,
-      admin_email: adminEmail,
-      customer_email: adminEmail,
-      email: adminEmail,
-      recipient_email: adminEmail,
-      to: adminEmail,
-      send_to: adminEmail,
-
-      customer_name: booking.clientName,
-      client_name: booking.clientName,
-      user_name: booking.clientName,
-      to_name: 'Shyam Creations Admin',
-
-      name: booking.clientName,
-      from_name: booking.clientName,
-      reply_to: booking.clientEmail ? booking.clientEmail.trim() : adminEmail,
-    };
-
-    try {
-      console.info(`[EmailJS] Dispatching Admin Notification (${adminTemplateId}) to: ${adminEmail}`);
-      const res = await emailjs.send(serviceId, adminTemplateId, adminParams, publicKey);
-      console.log('[EmailJS] Admin Email Success:', res);
-      adminSent = true;
-    } catch (err: any) {
-      console.error('[EmailJS] Admin Email Failed:', err);
-      adminErr = err?.text || err?.message || String(err);
-    }
-  } else {
-    adminErr = 'Missing admin template ID';
-  }
-
   return {
     clientEmailSent: clientSent,
-    adminEmailSent: adminSent,
-    message: `Customer Email (${booking.clientEmail}): ${clientSent ? '✓ Automatic Sent' : `Failed (${clientErr || 'Check template'})`}. Admin Email (${adminEmail}): ${adminSent ? '✓ Automatic Sent' : `Failed (${adminErr || 'Check template'})`}.`,
-    error: clientErr || adminErr || undefined,
+    message: `Customer Email (${booking.clientEmail}): ${clientSent ? '✓ Sent' : `Failed (${clientErr || 'Check template'})`}`,
+    error: clientErr || undefined,
   };
 }
-

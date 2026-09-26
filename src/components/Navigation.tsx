@@ -106,11 +106,13 @@ export const Navigation: React.FC<NavigationProps> = ({
               </button>
 
               <button
-                id="nav-admin"
-                onClick={() => handleNavClick('admin')}
-                className="text-[#C98A93] hover:text-[#D8A5AC] px-2.5 py-1 bg-[#2B231A] hover:bg-[#3A2F22] rounded-full text-[10px] font-bold tracking-wider uppercase transition-all cursor-pointer"
+                id="nav-check-availability"
+                onClick={() => handleNavClick('check-availability')}
+                className={navLinkClass(currentView === 'check-availability')}
+                title="Check available slots for Mehendi appointments"
               >
-                Admin Portal
+                <span className="material-symbols-outlined text-sm text-[var(--sc-emerald)]">event_available</span>
+                <span>Check Availability</span>
               </button>
             </div>
           </div>
@@ -210,8 +212,9 @@ export const Navigation: React.FC<NavigationProps> = ({
           <button onClick={() => handleNavClick('my-bookings')} className="px-3 py-1 text-[#2B231A] font-bold shrink-0">
             Bookings
           </button>
-          <button onClick={() => handleNavClick('admin')} className="px-3 py-1 text-[#A05A68] font-bold shrink-0">
-            Admin
+          <button onClick={() => handleNavClick('check-availability')} className="px-3 py-1 text-[#2B231A] font-bold shrink-0 flex items-center gap-1">
+            <span className="material-symbols-outlined text-sm">event_available</span>
+            <span>Availability</span>
           </button>
         </div>
       </nav>
