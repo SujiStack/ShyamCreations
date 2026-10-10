@@ -23,10 +23,9 @@ interface CartCheckoutModalProps {
 const TAMIL_NADU_PIN_PREFIXES = ['60', '61', '62', '63', '64'];
 
 function calcShippingFee(state: string, pincode: string): number {
-  const isTN = /tamil\s*nadu/i.test(state || '');
   const digits = (pincode || '').replace(/[^0-9]/g, '');
-  const isPin60 = digits.length >= 2 && TAMIL_NADU_PIN_PREFIXES.includes(digits.slice(0, 2));
-  if (isTN && isPin60) return 0;
+  const isTNPIN = digits.length >= 2 && TAMIL_NADU_PIN_PREFIXES.includes(digits.slice(0, 2));
+  if (isTNPIN) return 60;
   return 150;
 }
 
@@ -252,13 +251,12 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   };
 
   const shippingNote = useMemo(() => {
-    const isTN = /tamil\s*nadu/i.test(deliveryState);
     const digits = deliveryPincode.replace(/[^0-9]/g, '');
-    const isPin60 = digits.length >= 2 && TAMIL_NADU_PIN_PREFIXES.includes(digits.slice(0, 2));
-    if (isTN && isPin60) {
-      return 'Tamil Nadu (pincode starts with 60) — Shipping is FREE';
+    const isTNPIN = digits.length >= 2 && TAMIL_NADU_PIN_PREFIXES.includes(digits.slice(0, 2));
+    if (isTNPIN) {
+      return 'Tamil Nadu pincode — Shipping charge: ₹60';
     }
-    return 'Outside Tamil Nadu / non-60 pincode — shipping charge: ₹150';
+    return 'Outside Tamil Nadu pincode — shipping charge: ₹150';
   }, [deliveryState, deliveryPincode]);
 
   return (

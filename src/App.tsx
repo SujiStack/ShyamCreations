@@ -613,9 +613,10 @@ export function App() {
             onToggleWishlist={handleToggleWishlist}
             wishlistIds={wishlistIds}
             onDecrementStock={handleDecrementStock}
-            onOpenCart={() => setIsCartDrawerOpen(true)}
+             onOpenCart={() => setIsCartDrawerOpen(true)}
              onOpenWishlist={() => setIsWishlistDrawerOpen(true)}
              onRefreshJewellery={handleRefreshJewellery}
+             onRequireAuth={handleOpenAuthModal}
           />
         )}
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ViewMode, Product, HennaBooking, CustomerAccount } from '../types';
+import Swal from 'sweetalert2';
+import { ViewMode, Product, HennaBooking, CustomerAccount, PendingAuthAction } from '../types';
 import { STUDIO_INFO } from '../data/mockData';
 import {
   insertSupabaseJewelleryCustomer,
@@ -16,6 +17,7 @@ interface JewelleryProductViewProps {
   onAddOrder?: (order: HennaBooking) => Promise<{ success: boolean; isConfigured: boolean; error?: string }>;
   isAuthenticated?: boolean;
   customerUser?: CustomerAccount | null;
+  onRequireAuth?: (pendingAction?: PendingAuthAction) => void;
   onAddToCart?: (product: Product, quantity?: number) => void;
   onToggleWishlist?: (product: Product) => void;
   wishlistIds?: string[];
@@ -31,9 +33,10 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   onSelectProduct,
   onNavigate,
   onAddOrder,
-  isAuthenticated = false,
-  customerUser = null,
-  onAddToCart,
+   isAuthenticated = false,
+   customerUser = null,
+   onRequireAuth,
+   onAddToCart,
   onToggleWishlist,
   wishlistIds = [],
   onDecrementStock,
@@ -50,7 +53,6 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   const [customerAddress, setCustomerAddress] = useState<string>('');
   const [deliveryState, setDeliveryState] = useState<string>('Tamil Nadu');
   const [deliveryPincode, setDeliveryPincode] = useState<string>('');
-  const [formError, setFormError] = useState<string | null>(null);
   const [confirmedOrderCard, setConfirmedOrderCard] = useState<{
     ref: string; productName: string; clientName: string; phone: string;
     deliveryAddress: string; deliveryState: string; deliveryPincode: string;
@@ -116,28 +118,57 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   const handleBuyNowAndProceed = (prod: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if ((prod.stock ?? 1) <= 0) { showToast(`⚠️ ${prod.name} is out of stock.`); return; }
-    setCheckoutProduct(prod); setFormError(null);
+    if (!isAuthenticated) {
+      if (onRequireAuth) {
+        onRequireAuth({ action: 'buy', targetView: 'product' });
+      }
+      Swal.fire({
+        icon: 'warning',
+        title: 'Authentication Required',
+        text: 'Please sign in or register an account before placing your order.',
+        confirmButtonColor: 'var(--sc-emerald-dark)',
+      });
+      return;
+    }
+    setCheckoutProduct(prod);
     if (customerUser) { setCustomerName(customerUser.name || ''); setCustomerPhone(customerUser.phone || ''); }
   };
 
   const TAMIL_NADU_PIN_PREFIXES = ['60', '61', '62', '63', '64'];
 
   function calcShippingFeeForProduct(state: string, pincode: string): number {
-    const isTN = /tamil\s*nadu/i.test(state || '');
     const digits = (pincode || '').replace(/[^0-9]/g, '');
-    const isPin60 = digits.length >= 2 && TAMIL_NADU_PIN_PREFIXES.includes(digits.slice(0, 2));
-    if (isTN && isPin60) return 0;
+    const isTNPIN = digits.length >= 2 && TAMIL_NADU_PIN_PREFIXES.includes(digits.slice(0, 2));
+    if (isTNPIN) return 60;
     return 150;
   }
 
   const handleRazorpayJewelleryOrder = async () => {
-    setFormError(null);
     if (!checkoutProduct) return;
-    if (!customerName.trim()) { setFormError('Please enter your full name.'); return; }
-    if (!customerPhone.trim() || customerPhone.trim().length < 10) { setFormError('Please enter a valid 10-digit mobile number.'); return; }
-    if (!customerAddress.trim() || customerAddress.trim().length < 8) { setFormError('Please enter complete delivery address.'); return; }
-    if (!deliveryState.trim()) { setFormError('Please enter the delivery State.'); return; }
-    if (!deliveryPincode.trim()) { setFormError('Please enter the delivery Pincode.'); return; }
+    if (!customerName.trim()) {
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter your full name.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+      return;
+    }
+    if (!customerPhone.trim() || customerPhone.trim().length < 10) {
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter a valid 10-digit mobile number.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+      return;
+    }
+    if (!customerAddress.trim() || customerAddress.trim().length < 8) {
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter complete delivery address.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+      return;
+    }
+    if (!deliveryState.trim()) {
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter the delivery State.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+      return;
+    }
+    if (!deliveryPincode.trim()) {
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter the delivery Pincode.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+      return;
+    }
+    if (!/^\d{6}$/.test(deliveryPincode.trim())) {
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter a valid 6-digit Pincode.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+      return;
+    }
 
     const qty = getProductQty(checkoutProduct.id) || 1;
     const rawPrice = parseInt(checkoutProduct.price.replace(/[^0-9]/g, ''), 10) || 2500;
@@ -164,7 +195,10 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         itemsToDecrement: [{ productId: checkoutProduct.id, quantity: qty }],
       });
 
-      if (!paymentResult.success) { setFormError(paymentResult.error || 'Payment failed. Please retry.'); return; }
+      if (!paymentResult.success) {
+        Swal.fire({ icon: 'error', title: 'Payment Failed', text: paymentResult.error || 'Payment failed. Please retry.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+        return;
+      }
       const verifiedTxnId = paymentResult.razorpay_payment_id || `RZP-PAY-${Date.now()}`;
 
       const newOrder: HennaBooking = {
@@ -193,7 +227,12 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
       setCheckoutProduct(null);
     } catch (err: any) {
       console.error('Razorpay jewellery checkout error:', err);
-      setFormError(err?.message || 'Payment failed. Please retry.');
+      Swal.fire({
+        icon: 'error',
+        title: 'Payment Error',
+        text: err?.message || 'Payment failed. Please retry.',
+        confirmButtonColor: 'var(--sc-emerald-dark)',
+      });
     }
   };
 
@@ -384,7 +423,8 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         const qty = getProductQty(checkoutProduct.id) || 1;
         const itemPriceNum = parseInt(checkoutProduct.price.replace(/[^0-9]/g, ''), 10) || 2500;
         const subtotal = itemPriceNum * qty;
-        const totalPayableNum = subtotal + 50;
+        const shippingFeeNum = calcShippingFeeForProduct(deliveryState, deliveryPincode);
+        const totalPayableNum = subtotal + shippingFeeNum;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 md:p-6 animate-in fade-in duration-200 overflow-y-auto">
             <div className="bg-[var(--sc-bg-soft)] rounded-3xl p-5 md:p-8 max-w-2xl w-full border border-[var(--sc-border)]/60 shadow-2xl space-y-5 my-6 relative max-h-[92vh] overflow-y-auto">
@@ -404,7 +444,7 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1 text-xs text-[var(--sc-text-dim)]">
                     <span>Qty: <strong>{qty}</strong></span>
                     <span>Subtotal: <strong>₹{subtotal.toLocaleString('en-IN')}</strong></span>
-                    <span>Shipping: <strong>₹50</strong></span>
+                    <span>Shipping: <strong>{shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`}</strong></span>
                   </div>
                   <div className="pt-1 flex items-center justify-between border-t border-[var(--sc-border)]">
                     <span className="text-xs font-bold text-[var(--sc-text-dim)]">Total:</span>
@@ -429,7 +469,17 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                 </div>
                 <div>
                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">Delivery Address <span className="text-red-500">*</span></label>
-                  <textarea rows={2} placeholder="Door No, Street, Area, City, Pincode" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)] resize-none" />
+                  <textarea rows={2} placeholder="Door No, Street, Area, City" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)] resize-none" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">State <span className="text-red-500">*</span></label>
+                    <input type="text" placeholder="e.g. Tamil Nadu" value={deliveryState} onChange={(e) => setDeliveryState(e.target.value)} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)]" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">Pincode <span className="text-red-500">*</span></label>
+                    <input type="text" inputMode="numeric" pattern="\d{6}" maxLength={6} placeholder="e.g. 600001" value={deliveryPincode} onChange={(e) => setDeliveryPincode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)]" />
+                  </div>
                 </div>
               </div>
               <div className="space-y-4 pt-2 border-t border-[var(--sc-border)]/40">
@@ -453,12 +503,6 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                   </div>
                 </div>
               </div>
-              {formError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-700 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm text-red-600">error</span>
-                  <span>{formError}</span>
-                </div>
-              )}
               <div className="pt-2">
                 <button type="button" onClick={handleRazorpayJewelleryOrder}
                   className="w-full py-4 bg-[var(--sc-emerald-dark)] hover:bg-[var(--sc-emerald)] text-white font-bold text-sm rounded-2xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer">

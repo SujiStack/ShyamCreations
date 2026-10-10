@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import Swal from 'sweetalert2';
 import { ViewMode, HennaBooking, CustomerAccount, PendingAuthAction, DisabledSlot } from '../types';
 import { SERVICE_PACKAGES, VISIONARY_ARTISTS, STUDIO_INFO } from '../data/mockData';
 import { sendBookingConfirmationEmails, EmailSendResult } from '../lib/emailService';
@@ -106,7 +107,8 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
     }
   }, [customerUser]);
   const [occasion, setOccasion] = useState<string>('Select Occasion');
-  const [selectedDate, setSelectedDate] = useState<string>('2026-08-20');
+  const today = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState<string>(today);
   const [selectedMehendiService, setSelectedMehendiService] = useState<string>('minimal-design');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
 
@@ -141,7 +143,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
   const [confirmedBookingCard, setConfirmedBookingCard] = useState<HennaBooking | null>(null);
   const [emailStatus, setEmailStatus] = useState<EmailSendResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [formError, setFormError] = useState<string | null>(null);
 
   // Check if a slot is already booked
   const isSlotBooked = useMemo(() => (date: string, timeSlot: string) => {
@@ -169,65 +170,83 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
       .map((slot) => ({ timeSlot: slot, isBooked: isSlotBooked(date, slot), isDisabled: isSlotDisabled(date, slot) }));
   }, [isSlotBooked, isSlotDisabled]);
 
+  // Auto-select the first available slot for today when the component mounts
+  useEffect(() => {
+    const available = getAvailableSlots(today);
+    if (available.length > 0 && !available.find(s => s.timeSlot === selectedTime)) {
+      setSelectedTime(available[0].timeSlot);
+    }
+  }, [today]);
+
   const handleRazorpayBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormError(null);
 
     if (!customerUser) {
       if (onRequireAuth) {
         onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: selectedCategory });
       }
-      setFormError('Please sign in or register an account before booking your appointment.');
+      Swal.fire({
+        icon: 'warning',
+        title: 'Authentication Required',
+        text: 'Please sign in or register an account before booking your appointment.',
+        confirmButtonColor: 'var(--sc-emerald)',
+      });
       return;
     }
 
     if (!clientName.trim()) {
-      setFormError('Please enter your Full Name.');
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter your Full Name.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
     if (!clientPhone.trim() || clientPhone.length < 10) {
-      setFormError('Please enter a valid 10-digit Mobile Number.');
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter a valid 10-digit Mobile Number.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
     if (!sameAsPhone && (!clientWa.trim() || clientWa.length < 10)) {
-      setFormError('Please enter a valid 10-digit WhatsApp Number.');
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter a valid 10-digit WhatsApp Number.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
     if (!clientEmail.trim() || !clientEmail.includes('@')) {
-      setFormError('Please enter a valid Email Address for appointment confirmation.');
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter a valid Email Address for appointment confirmation.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
     if (!occasion || occasion === 'Select Occasion') {
-      setFormError('Please select an Occasion.');
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select an Occasion.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
     if (!selectedDate) {
-      setFormError('Please select a Preferred Date.');
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a Preferred Date.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
     if (!selectedTime) {
-      setFormError('Please select a Time Slot.');
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a Time Slot.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
     if (selectedCategory === 'mehendi' && !selectedMehendiService) {
-      setFormError('Please select a Mehendi Service.');
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a Mehendi Service.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
     if (selectedCategory !== 'mehendi' && !selectedPackage) {
-      setFormError('Please select a Service Package.');
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a Service Package.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
 
     // Check if slot is already booked
     if (isSlotBooked(selectedDate, selectedTime)) {
-      setFormError('This time slot is already booked. Please choose a different date or time.');
+      Swal.fire({ icon: 'warning', title: 'Slot Unavailable', text: 'This time slot is already booked. Please choose a different date or time.', confirmButtonColor: 'var(--sc-emerald)' });
       return;
     }
 
     // Check if slot is disabled by admin
     if (isSlotDisabled(selectedDate, selectedTime)) {
       const disabledSlot = disabledSlots.find((s) => s.date === selectedDate && s.timeSlot === selectedTime);
-      setFormError(`This time slot is not available${disabledSlot?.reason ? `: ${disabledSlot.reason}` : '.'}`);
+      const reason = disabledSlot?.reason || '';
+      Swal.fire({
+        icon: 'warning',
+        title: 'Slot Unavailable',
+        html: `This time slot is not available${reason ? `: ${reason}` : '.'}`,
+        confirmButtonColor: 'var(--sc-emerald)',
+      });
       return;
     }
 
@@ -272,7 +291,12 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
 
       if (!paymentResult.success) {
         setIsSubmitting(false);
-        setFormError(paymentResult.error || 'Payment was cancelled or failed. Please retry.');
+        Swal.fire({
+          icon: 'error',
+          title: 'Payment Failed',
+          text: paymentResult.error || 'Payment was cancelled or failed. Please retry.',
+          confirmButtonColor: 'var(--sc-emerald)',
+        });
         return;
       }
 
@@ -359,11 +383,25 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
       setConfirmedBookingCard(newBooking);
       setIsSubmitting(false);
 
+      Swal.fire({
+        icon: 'success',
+        title: 'Booking Confirmed!',
+        html: `Your appointment is confirmed.<br><strong>Reference:</strong> ${refCode}<br><strong>Date:</strong> ${selectedDate} | <strong>Time:</strong> ${selectedTime}<br><strong>Service:</strong> ${serviceTitle}`,
+        confirmButtonColor: 'var(--sc-emerald)',
+        timer: 5000,
+        timerProgressBar: true,
+      });
+
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       console.error('Razorpay booking payment error:', err);
       setIsSubmitting(false);
-      setFormError(err?.message || 'Payment failed. Please retry.');
+      Swal.fire({
+        icon: 'error',
+        title: 'Payment Error',
+        text: err?.message || 'Payment failed. Please retry.',
+        confirmButtonColor: 'var(--sc-emerald)',
+      });
     }
   };
 
@@ -500,7 +538,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                     <strong className="text-amber-900">⚠️ {emailStatus?.error || 'Dispatch check required'}</strong>
                   )
                 }<br />
-                • Admin (shyamcreationstudio@gmail.com): <strong className="text-emerald-900">✓ Sent via EmailJS (template_fqn6e0q)</strong>
               </p>
               {emailStatus?.clientEmailSent ? (
                 <p className="text-[9.5px] text-emerald-800/80 italic border-t border-emerald-200/60 pt-1 leading-relaxed">
@@ -602,14 +639,6 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
             )}
 
             <form onSubmit={handleRazorpayBooking} className="space-y-6 sm:space-y-8 md:space-y-10">
-
-              {/* Form Validation Error Banner */}
-              {formError && (
-                <div className="p-4 bg-red-50 text-red-900 border border-red-200 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs">
-                  <span className="material-symbols-outlined text-red-600 text-lg">error</span>
-                  <span>{formError}</span>
-                </div>
-              )}
 
                {/* SECTION 1: PERSONAL DETAILS */}
                <div className="space-y-4 sm:space-y-6">
