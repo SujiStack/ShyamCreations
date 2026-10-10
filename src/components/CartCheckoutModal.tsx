@@ -184,7 +184,6 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         notes: `Bag checkout (${cartItems.length} items). Address: ${customerAddress.trim()}`,
       });
 
-      //suji
       // Decrement stock for every product in cart
       for (const item of cartItems) {
         await decrementProductStockInDb(item.productId, item.quantity);
