@@ -354,7 +354,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     id="input-login-identifier"
                     type="text"
                     required
-                    placeholder="e.g. client@shyamcreations.com or 9363710342"
+                    placeholder="Enter email or 10-digit mobile number"
                     value={emailOrPhone}
                     onChange={(e) => setEmailOrPhone(e.target.value)}
                     className="w-full pl-9 pr-3 py-2.5 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
@@ -388,7 +388,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     id="input-login-password"
                     type={showPassword ? 'text' : 'password'}
                     required
-                    placeholder="Enter your account password"
+                    placeholder=" Enter your account password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full pl-9 pr-10 py-2.5 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"

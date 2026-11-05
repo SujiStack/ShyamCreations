@@ -1,3 +1,5 @@
+import { formatDateDDMMYY } from './dateFormat';
+
 export interface BookingEmailParams {
   ref: string;
   clientName: string;
@@ -118,7 +120,7 @@ export async function sendBookingConfirmationEmails(
     transaction_id: booking.transactionId || 'UPI-REF-PENDING',
     utr_number: booking.transactionId || 'None',
 
-    intro_text: `Your appointment for ${booking.serviceName} on ${booking.date} at ${booking.timeSlot} is confirmed. Payment Status: ${booking.paymentStatus || 'Advance Received'} (${booking.paymentAmount || ''}). Thank you for choosing Shyam Creations Studio!`,
+    intro_text: `Your appointment for ${booking.serviceName} on ${formatDateDDMMYY(booking.date)} at ${booking.timeSlot} is confirmed. Payment Status: ${booking.paymentStatus || 'Advance Received'} (${booking.paymentAmount || ''}). Thank you for choosing Shyam Creations Studio!`,
     badge_display: 'none',
 
     studio_name: 'Shyam Creations Studio',

@@ -5,6 +5,8 @@ import { SERVICE_PACKAGES, VISIONARY_ARTISTS, STUDIO_INFO } from '../data/mockDa
 import { sendBookingConfirmationEmails, EmailSendResult } from '../lib/emailService';
 import { insertSupabaseJewelleryBooking } from '../lib/supabaseService';
 import { initiateRazorpayPayment } from '../lib/razorpay';
+import { formatDateDDMMYY } from '../lib/dateFormat';
+import { DateInputDDMMYY } from '../components/DateInputDDMMYY';
 
 export type ServiceCategoryKey = 'mehendi' | 'jewellery';
 
@@ -90,11 +92,11 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategoryKey>(initialCategory);
 
   // Mehendi Form State
-  const [clientName, setClientName] = useState<string>(customerUser?.name || 'Priya Sharma');
-  const [clientPhone, setClientPhone] = useState<string>(customerUser?.phone || '9876543210');
-  const [clientEmail, setClientEmail] = useState<string>(customerUser?.email || 'priya@example.com');
+  const [clientName, setClientName] = useState<string>(customerUser?.name);
+  const [clientPhone, setClientPhone] = useState<string>(customerUser?.phone);
+  const [clientEmail, setClientEmail] = useState<string>(customerUser?.email);
   const [sameAsPhone, setSameAsPhone] = useState<boolean>(true);
-  const [clientWa, setClientWa] = useState<string>(customerUser?.phone || '9876543210');
+  const [clientWa, setClientWa] = useState<string>(customerUser?.phone);
 
   useEffect(() => {
     if (customerUser) {
@@ -285,7 +287,7 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
         customerEmail: clientEmail.trim(),
         customerPhone: clientPhone.trim(),
         serviceOrProductName: `${serviceTitle} (${paymentOption === 'advance' ? 'Slot Deposit' : 'Full Payment'})`,
-        notes: `Date: ${selectedDate}, Slot: ${selectedTime}, Location: ${location}`,
+        notes: `Date: ${formatDateDDMMYY(selectedDate)}, Slot: ${selectedTime}, Location: ${location}`,
         deliveryAddress: location,
       });
 
@@ -386,7 +388,7 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
       Swal.fire({
         icon: 'success',
         title: 'Booking Confirmed!',
-        html: `Your appointment is confirmed.<br><strong>Reference:</strong> ${refCode}<br><strong>Date:</strong> ${selectedDate} | <strong>Time:</strong> ${selectedTime}<br><strong>Service:</strong> ${serviceTitle}`,
+        html: `Your appointment is confirmed.<br><strong>Reference:</strong> ${refCode}<br><strong>Date:</strong> ${formatDateDDMMYY(selectedDate)} | <strong>Time:</strong> ${selectedTime}<br><strong>Service:</strong> ${serviceTitle}`,
         confirmButtonColor: 'var(--sc-emerald)',
         timer: 5000,
         timerProgressBar: true,
@@ -425,7 +427,7 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
   if (confirmedBookingCard) {
     const rawCustWa = (confirmedBookingCard.wa || confirmedBookingCard.phone || '').replace(/\D/g, '');
     const custWaFormatted = rawCustWa.length === 10 ? `91${rawCustWa}` : (rawCustWa || '919363710342');
-    const custMessage = `Hello *${confirmedBookingCard.clientName}*! 🎉\n\nYour Mehandi appointment with *Shyam Creations Studio* (Contact: +91 9363710342) is *CONFIRMED & BOOKED*!\n\n📌 *Booking Ref:* ${confirmedBookingCard.ref}\n🌺 *Service:* ${confirmedBookingCard.serviceName}\n📅 *Date:* ${confirmedBookingCard.date}\n⏰ *Time:* ${confirmedBookingCard.timeSlot}\n📍 *Location:* ${confirmedBookingCard.location}\n\nThank you for choosing Shyam Creations Studio!\nStudio Contact: +91 9363710342 / shyamcreationstudio@gmail.com`;
+    const custMessage = `Hello *${confirmedBookingCard.clientName}*! 🎉\n\nYour Mehandi appointment with *Shyam Creations Studio* (Contact: +91 9363710342) is *CONFIRMED & BOOKED*!\n\n📌 *Booking Ref:* ${confirmedBookingCard.ref}\n🌺 *Service:* ${confirmedBookingCard.serviceName}\n📅 *Date:* ${formatDateDDMMYY(confirmedBookingCard.date)}\n⏰ *Time:* ${confirmedBookingCard.timeSlot}\n📍 *Location:* ${confirmedBookingCard.location}\n\nThank you for choosing Shyam Creations Studio!\nStudio Contact: +91 9363710342 / shyamcreationstudio@gmail.com`;
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
@@ -470,7 +472,7 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
             <div className="bg-[var(--sc-surface)] rounded-2xl border border-[var(--sc-border)] p-4 text-left divide-y divide-[#f2e8db] space-y-2.5 shadow-2xs text-xs">
               <div className="flex items-center justify-between pt-1">
                 <span className="font-bold text-[#8A7F72] text-[10px] uppercase tracking-wider">DATE</span>
-                <span className="font-semibold text-[var(--sc-text)]">{confirmedBookingCard.date}</span>
+                <span className="font-semibold text-[var(--sc-text)]">{formatDateDDMMYY(confirmedBookingCard.date)}</span>
               </div>
 
               <div className="flex items-center justify-between pt-2">
@@ -750,13 +752,11 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
                      <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
                        PREFERRED DATE *
                      </label>
-                    <input
-                      type="date"
+                    <DateInputDDMMYY
                       required
                       value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
+                      onChange={setSelectedDate}
                       min={new Date().toISOString().split('T')[0]}
-                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs cursor-pointer"
                     />
                     {isDateFullyBooked(selectedDate) && (
                       <p className="text-[11px] text-red-600 font-medium mt-1">⚠ This date is fully booked. Please select another date.</p>

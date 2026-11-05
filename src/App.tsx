@@ -466,24 +466,54 @@ export function App() {
   };
 
   const handleRescheduleHennaBooking = (
-    id: string,
+    idOrRef: string,
     newDate: string,
     newTimeSlot: string,
     notes?: string
-  ) => {
-    setHennaBookings((prev) =>
-      prev.map((b) =>
-        b.id === id
-          ? {
-              ...b,
-              date: newDate,
-              timeSlot: newTimeSlot,
-              status: 'Rescheduled',
-              rescheduleNotes: notes || b.rescheduleNotes,
-            }
-          : b
+  ): boolean => {
+    // Match by ref OR id: searched (fetched) copies and App copies of the same
+    // booking can carry different local ids, so id-only matching silently
+    // missed. Persist to localStorage too, otherwise a refresh reverted the
+    // reschedule back to the cached old date.
+    const apply = (b: HennaBooking): HennaBooking =>
+      b.id === idOrRef || b.ref === idOrRef
+        ? {
+            ...b,
+            date: newDate,
+            timeSlot: newTimeSlot,
+            status: 'Rescheduled',
+            rescheduleNotes: notes || b.rescheduleNotes,
+          }
+        : b;
+
+    setHennaBookings((prev) => prev.map(apply));
+    try {
+      const stored = localStorage.getItem('shyam_henna_bookings');
+      if (stored) {
+        const list = JSON.parse(stored);
+        if (Array.isArray(list)) {
+          localStorage.setItem('shyam_henna_bookings', JSON.stringify(list.map(apply)));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to persist reschedule to localStorage:', e);
+    }
+    return true;
+  };
+
+  const handleRescheduleJewelleryRental = (
+    idOrRef: string,
+    newStartDate: string,
+    notes?: string
+  ): boolean => {
+    setJewelleryRentals((prev) =>
+      prev.map((r) =>
+        r.id === idOrRef || r.ref === idOrRef
+          ? { ...r, startDate: newStartDate, returnDue: newStartDate, status: 'Rescheduled' }
+          : r
       )
     );
+    return true;
   };
 
   const handleAddHennaBooking = async (
@@ -636,10 +666,13 @@ export function App() {
           <MyBookingsView
             hennaBookings={hennaBookings}
             jewelleryRentals={jewelleryRentals}
+            disabledSlots={disabledSlots}
             onNavigate={handleNavigate}
             onRescheduleBooking={handleRescheduleHennaBooking}
+            onRescheduleJewelleryRental={handleRescheduleJewelleryRental}
             customerUser={customerUser}
             onOpenAuthModal={() => handleOpenAuthModal()}
+            onRequireAuth={handleOpenAuthModal}
           />
         )}
 

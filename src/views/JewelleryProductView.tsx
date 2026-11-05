@@ -8,6 +8,14 @@ import {
   decrementProductStockInDb,
 } from '../lib/supabaseService';
 import { initiateRazorpayPayment } from '../lib/razorpay';
+import {
+  calcRental,
+  formatINR,
+  RENTAL_DAY_OPTIONS,
+  SECURITY_DEPOSIT_NOTE,
+  SECURITY_DEPOSIT_RATE,
+} from '../lib/rentalCalc';
+import { formatDateDDMMYY } from '../lib/dateFormat';
 
 interface JewelleryProductViewProps {
   product: Product;
@@ -53,10 +61,12 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   const [customerAddress, setCustomerAddress] = useState<string>('');
   const [deliveryState, setDeliveryState] = useState<string>('Tamil Nadu');
   const [deliveryPincode, setDeliveryPincode] = useState<string>('');
+  const [rentalDays, setRentalDays] = useState<number>(3);
   const [confirmedOrderCard, setConfirmedOrderCard] = useState<{
     ref: string; productName: string; clientName: string; phone: string;
     deliveryAddress: string; deliveryState: string; deliveryPincode: string;
     itemPrice: string; shippingFee: string; totalAmount: string; transactionId: string; image: string;
+    isRental?: boolean; rentalBreakdown?: string; securityDeposit?: string; rentalPeriod?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -115,6 +125,8 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     if (onAddToCart) { onAddToCart(prod, qty); showToast(`🛍️ Added ${qty}x ${prod.name} to bag!`); }
   };
 
+  // Buy for Sale items, Rent for Rental items — the button label, icon and
+  // auth prompt all follow the product type.
   const handleBuyNowAndProceed = (prod: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if ((prod.stock ?? 1) <= 0) { showToast(`⚠️ ${prod.name} is out of stock.`); return; }
@@ -125,7 +137,9 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
       Swal.fire({
         icon: 'warning',
         title: 'Authentication Required',
-        text: 'Please sign in or register an account before placing your order.',
+        text: prod.type === 'Rental'
+          ? 'Please sign in or register an account before renting this jewellery.'
+          : 'Please sign in or register an account before placing your order.',
         confirmButtonColor: 'var(--sc-emerald-dark)',
       });
       return;
@@ -171,13 +185,50 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     }
 
     const qty = getProductQty(checkoutProduct.id) || 1;
-    const rawPrice = parseInt(checkoutProduct.price.replace(/[^0-9]/g, ''), 10) || 2500;
-    const subtotal = rawPrice * qty;
+    const isRental = checkoutProduct.type === 'Rental';
     const shippingFeeNum = calcShippingFeeForProduct(deliveryState, deliveryPincode);
-    const totalAmountNum = subtotal + shippingFeeNum;
-    const formattedItemPrice = `₹${subtotal.toLocaleString('en-IN')} (${qty} Qty)`;
+
+    // Rental: charge per-day rent for the chosen days + 30% of the original
+    // jewellery price as a refundable security deposit.
+    // e.g. original ₹2,000, rent ₹600/day × 3 days
+    //   → rental ₹1,800 + deposit ₹600 = ₹2,400 (+ shipping)
+    // Sale: charge the full original price as before, no deposit.
+    const rental = isRental
+      ? calcRental({
+          originalPrice: checkoutProduct.price,
+          rentalPricePerDay: checkoutProduct.rentalPriceDay || '₹0/day',
+          days: rentalDays,
+          qty,
+        })
+      : null;
+    // Guard: a rental with no per-day price (or no original price to base
+    // the deposit on) must never check out at ₹0 rent.
+    if (isRental && (!rental || rental.rentalPerDayPerPiece <= 0 || rental.originalPricePerPiece <= 0)) {
+      Swal.fire({ icon: 'error', title: 'Rental Price Not Set', text: `Rental price is not set for ${checkoutProduct.name}. Please WhatsApp the studio to book this rental.`, confirmButtonColor: 'var(--sc-emerald-dark)' });
+      return;
+    }
+    const subtotal = rental ? rental.rentalTotal : (parseInt(checkoutProduct.price.replace(/[^0-9]/g, ''), 10) || 2500) * qty;
+    const securityDepositNum = rental ? rental.securityDeposit : 0;
+    const totalAmountNum = subtotal + securityDepositNum + shippingFeeNum;
+    const formattedItemPrice = rental
+      ? `${formatINR(rental.rentalTotal)} rental (${formatINR(rental.rentalPerDayPerPiece)}/day × ${rental.days} days, ${qty} Qty)`
+      : `₹${subtotal.toLocaleString('en-IN')} (${qty} Qty)`;
     const formattedShipping = shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`;
     const formattedTotal = `₹${totalAmountNum.toLocaleString('en-IN')}`;
+    const formattedDeposit = formatINR(securityDepositNum);
+    // Customer-facing breakdown — never shows the original amount (it is
+    // only used internally to calculate the 30% deposit).
+    const rentalBreakdown = rental
+      ? `Rental ${formatINR(rental.rentalPerDayPerPiece)}/day × ${rental.days} days = ${formatINR(rental.rentalTotal)} | Security deposit ${formattedDeposit} (refundable after safe return)`
+      : '';
+    // Internal studio record (DB notes only, not shown to the customer).
+    const rentalBreakdownInternal = rental
+      ? `Original price ${formatINR(rental.originalPricePerPiece)} × ${qty} = ${formatINR(rental.originalTotal)} | ${rentalBreakdown}`
+      : '';
+    const startDateIso = new Date().toISOString().split('T')[0];
+    const endDateIso = rental
+      ? new Date(Date.now() + (rental.days - 1) * 86400000).toISOString().split('T')[0]
+      : startDateIso;
     const refCode = `JW-${Math.floor(100000 + Math.random() * 900000)}`;
 
     try {
@@ -188,8 +239,10 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         customerName: customerName.trim(),
         customerEmail: customerUser?.email || 'client@shyamcreations.com',
         customerPhone: customerPhone.trim(),
-        serviceOrProductName: `${checkoutProduct.name} (${qty} Qty)`,
-        notes: `Courier Address: ${customerAddress.trim()}, State: ${deliveryState.trim()}, Pincode: ${deliveryPincode.trim()}`,
+        serviceOrProductName: isRental
+          ? `${checkoutProduct.name} (${qty} Qty) — Rental ${rentalDays} days: ${formatINR(rental!.rentalTotal)} + Deposit ${formattedDeposit}`
+          : `${checkoutProduct.name} (${qty} Qty)`,
+        notes: `${rentalBreakdown ? rentalBreakdown + ' | ' : ''}Courier Address: ${customerAddress.trim()}, State: ${deliveryState.trim()}, Pincode: ${deliveryPincode.trim()}`,
         jewelleryId: checkoutProduct.id,
         deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         itemsToDecrement: [{ productId: checkoutProduct.id, quantity: qty }],
@@ -211,19 +264,19 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         phone: customerPhone.trim(), wa: customerPhone.trim(),
         deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         shippingFee: formattedShipping,
-        specialRequests: `Item: ${checkoutProduct.name} | Qty: ${qty} | Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}`,
+        specialRequests: `${rentalBreakdown ? rentalBreakdown + ' | ' : ''}${SECURITY_DEPOSIT_NOTE} Item: ${checkoutProduct.name} | Qty: ${qty} | Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}`,
         status: 'Confirmed', type: 'jewellery', paymentStatus: 'Paid',
         paymentAmount: formattedTotal, paymentMethod: 'Razorpay (Online Payment)',
         transactionId: verifiedTxnId,
       };
 
-      await insertSupabaseJewelleryCustomer({ orderRef: refCode, customerName: customerName.trim(), phone: customerPhone.trim(), whatsapp: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, productName: `${checkoutProduct.name} (${qty} Qty)`, jewelleryId: checkoutProduct.id, itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, paymentMethod: 'Razorpay (Online Payment)', upiTransactionId: verifiedTxnId, paymentStatus: 'Paid', orderStatus: 'Processing', notes: `Express Jewellery Checkout. Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}` });
-      await insertSupabaseJewelleryBooking({ bookingRef: refCode, clientName: customerName.trim(), phone: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', productName: checkoutProduct.name, jewelleryId: checkoutProduct.id, bookingType: checkoutProduct.type === 'Rental' ? 'Rental' : 'Purchase', startDate: new Date().toISOString().split('T')[0], totalPrice: formattedTotal, location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, paymentStatus: 'Paid', paymentMethod: 'Razorpay (Online Payment)', transactionId: verifiedTxnId, status: 'Confirmed', notes: `Express Courier. Qty: ${qty}. Address: ${customerAddress.trim()}` });
+      await insertSupabaseJewelleryCustomer({ orderRef: refCode, customerName: customerName.trim(), phone: customerPhone.trim(), whatsapp: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, productName: `${checkoutProduct.name} (${qty} Qty)`, jewelleryId: checkoutProduct.id, itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, paymentMethod: 'Razorpay (Online Payment)', upiTransactionId: verifiedTxnId, paymentStatus: 'Paid', orderStatus: 'Processing', notes: `${rentalBreakdownInternal ? rentalBreakdownInternal + ' | ' : ''}${SECURITY_DEPOSIT_NOTE} Express Jewellery Checkout. Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}` });
+      await insertSupabaseJewelleryBooking({ bookingRef: refCode, clientName: customerName.trim(), phone: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', productName: checkoutProduct.name, jewelleryId: checkoutProduct.id, bookingType: isRental ? 'Rental' : 'Purchase', startDate: startDateIso, endDate: endDateIso, durationDays: rental ? rental.days : 1, dailyRate: rental ? `${formatINR(rental.rentalPerDayPerPiece)}/day` : undefined, depositAmount: rental ? formattedDeposit : '₹0', totalPrice: formattedTotal, location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, paymentStatus: 'Paid', paymentMethod: 'Razorpay (Online Payment)', transactionId: verifiedTxnId, status: 'Confirmed', notes: `${rentalBreakdownInternal ? rentalBreakdownInternal + ' | ' : ''}${SECURITY_DEPOSIT_NOTE} Express Courier. Qty: ${qty}. Address: ${customerAddress.trim()}` });
       await decrementProductStockInDb(checkoutProduct.id, qty);
       if (onDecrementStock) await onDecrementStock(checkoutProduct.id, qty);
       if (onAddOrder) await onAddOrder(newOrder);
 
-      setConfirmedOrderCard({ ref: refCode, productName: `${checkoutProduct.name} (${qty} Qty)`, clientName: customerName.trim(), phone: customerPhone.trim(), deliveryAddress: customerAddress.trim(), deliveryState: deliveryState.trim(), deliveryPincode: deliveryPincode.trim(), itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, transactionId: verifiedTxnId, image: checkoutProduct.images[0] });
+      setConfirmedOrderCard({ ref: refCode, productName: `${checkoutProduct.name} (${qty} Qty)`, clientName: customerName.trim(), phone: customerPhone.trim(), deliveryAddress: customerAddress.trim(), deliveryState: deliveryState.trim(), deliveryPincode: deliveryPincode.trim(), itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, transactionId: verifiedTxnId, image: checkoutProduct.images[0], isRental, rentalBreakdown, securityDeposit: rental ? formattedDeposit : undefined, rentalPeriod: rental ? `${formatDateDDMMYY(startDateIso)} to ${formatDateDDMMYY(endDateIso)} (${rental.days} days)` : undefined });
       setCheckoutProduct(null);
     } catch (err: any) {
       console.error('Razorpay jewellery checkout error:', err);
@@ -239,7 +292,10 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   const openWhatsAppOrderReceipt = () => {
     if (!confirmedOrderCard) return;
     const cleanPhone = STUDIO_INFO.whatsapp.replace(/[^0-9]/g, '');
-    const message = `Hello Shyam Creations! I placed a Jewellery Order:\n🛍️ *Ref:* ${confirmedOrderCard.ref}\n👑 *Item:* ${confirmedOrderCard.productName}\n💰 *Item Price:* ${confirmedOrderCard.itemPrice}\n🚚 *Shipping Charges:* ${confirmedOrderCard.shippingFee}\n💵 *Grand Total:* ${confirmedOrderCard.totalAmount}\n📲 *Txn ID:* ${confirmedOrderCard.transactionId}\n👤 *Name:* ${confirmedOrderCard.clientName}\n📞 *Phone:* ${confirmedOrderCard.phone}\n📍 *Address:* ${confirmedOrderCard.deliveryAddress}, ${confirmedOrderCard.deliveryState} - ${confirmedOrderCard.deliveryPincode}`;
+    const rentalLines = confirmedOrderCard.isRental
+      ? `\n🔁 *Rental:* ${confirmedOrderCard.rentalBreakdown}\n🛡️ *Security Deposit (refundable after safe return):* ${confirmedOrderCard.securityDeposit}\n📅 *Rental Period:* ${confirmedOrderCard.rentalPeriod}`
+      : '';
+    const message = `Hello Shyam Creations! I placed a Jewellery ${confirmedOrderCard.isRental ? 'Rental' : 'Order'}:\n🛍️ *Ref:* ${confirmedOrderCard.ref}\n👑 *Item:* ${confirmedOrderCard.productName}\n💰 *Item Price / Rental:* ${confirmedOrderCard.itemPrice}${rentalLines}\n🚚 *Shipping Charges:* ${confirmedOrderCard.shippingFee}\n💵 *Grand Total:* ${confirmedOrderCard.totalAmount}\n📲 *Txn ID:* ${confirmedOrderCard.transactionId}\n👤 *Name:* ${confirmedOrderCard.clientName}\n📞 *Phone:* ${confirmedOrderCard.phone}\n📍 *Address:* ${confirmedOrderCard.deliveryAddress}, ${confirmedOrderCard.deliveryState} - ${confirmedOrderCard.deliveryPincode}`;
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -264,11 +320,11 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
 
         <div className="flex items-center gap-2">
           <button onClick={onOpenWishlist} className="px-3 py-2 bg-[var(--sc-surface)] hover:bg-[var(--sc-accent-warm)] text-[var(--sc-emerald-dark)] border border-[var(--sc-border)]/40 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-            <span className="material-symbols-outlined text-base text-rose-500">favorite</span>
+            <span className="material-symbols-outlined text-sm leading-none shrink-0 text-rose-500">favorite</span>
             <span>Wishlist ({wishlistIds.length})</span>
           </button>
           <button onClick={onOpenCart} className="px-4 py-2 bg-[var(--sc-emerald-dark)] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-            <span className="material-symbols-outlined text-base">shopping_bag</span>
+            <span className="material-symbols-outlined text-sm leading-none shrink-0">shopping_bag</span>
             <span>Bag</span>
           </button>
         </div>
@@ -334,11 +390,23 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                 <div className="p-4 space-y-3">
                   <h3 className="font-semibold text-base text-[var(--sc-text)] group-hover:text-[var(--sc-emerald-dark)] transition-colors leading-snug line-clamp-2">{prod.name}</h3>
 
-                  <div className="flex items-baseline gap-2">
+                  {prod.type === 'Rental' ? (
+                    <>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-black text-[var(--sc-text)]">{prod.rentalPriceDay || prod.price}<span className="text-xs font-bold text-[var(--sc-text-dim)]">/day</span></span>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md ml-auto">RENTAL</span>
+                      </div>
+                      <p className="text-[11px] text-[var(--sc-text-dim)]">
+                        Security deposit {formatINR(Math.round((parseInt(prod.price.replace(/[^0-9]/g, ''), 10) || 0) * SECURITY_DEPOSIT_RATE))} (refundable)
+                      </p>
+                    </>
+                  ) : (
+                    <div className="flex items-baseline gap-2">
                       <span className="text-2xl font-black text-[var(--sc-text)]">{prod.price}</span>
                       <span className="text-sm text-[var(--sc-text-dimmer)] line-through">{getMRP(prod.price)}</span>
                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md ml-auto">98% OFF</span>
                     </div>
+                  )}
 
                   {inStock && (
                     <div className="flex items-center justify-between bg-[var(--sc-surface)] px-3 py-1.5 rounded-xl border border-[var(--sc-border)]/40 text-xs font-bold">
@@ -353,16 +421,16 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="grid grid-cols-1 gap-2 pt-1">
                     <button onClick={(e) => handleAddToCartClick(e, prod)} disabled={!inStock}
                       className="py-3 px-3 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald-dark)] text-[var(--sc-emerald-dark)] hover:text-white font-bold text-sm rounded-xl transition-all border border-[var(--sc-border)]/60 flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer">
-                      <span className="material-symbols-outlined text-base">add_shopping_cart</span>
+                      <span className="material-symbols-outlined text-base leading-none shrink-0">add_shopping_cart</span>
                       <span>ADD TO CART</span>
                     </button>
                     <button onClick={(e) => handleBuyNowAndProceed(prod, e)} disabled={!inStock}
                       className="py-3 px-3 bg-[#171310] hover:bg-[var(--sc-emerald-dark)] text-[#f3ebd9] font-bold text-sm rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer">
-                      <span className="material-symbols-outlined text-base">shopping_bag</span>
-                      <span>{inStock ? 'BUY NOW' : 'OUT OF STOCK'}</span>
+                      <span className="material-symbols-outlined text-base leading-none shrink-0">{prod.type === 'Rental' ? 'autorenew' : 'shopping_bag'}</span>
+                      <span>{!inStock ? 'OUT OF STOCK' : prod.type === 'Rental' ? 'RENT NOW' : 'BUY NOW'}</span>
                     </button>
                   </div>
                 </div>
@@ -392,24 +460,39 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
               <div className="aspect-square bg-[var(--sc-bg-soft)] rounded-2xl p-4 border border-[var(--sc-border)] flex items-center justify-center">
                 <img src={selectedDetailProduct.images[0]} alt={selectedDetailProduct.name} className="max-h-full object-contain" />
               </div>
-              <div className="flex items-baseline gap-3">
+              {selectedDetailProduct.type === 'Rental' ? (
+                <div className="space-y-1">
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-2xl font-black text-[var(--sc-text)]">{selectedDetailProduct.rentalPriceDay || selectedDetailProduct.price}<span className="text-xs font-bold text-[var(--sc-text-dim)]">/day</span></span>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">RENTAL</span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${inStock ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
+                      {inStock ? `${maxStock} in stock` : 'Out of stock'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--sc-text-dim)]">
+                    Security deposit {formatINR(Math.round((parseInt(selectedDetailProduct.price.replace(/[^0-9]/g, ''), 10) || 0) * SECURITY_DEPOSIT_RATE))} (refundable after safe return)
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-3">
                   <span className="text-2xl font-black text-[var(--sc-text)]">{selectedDetailProduct.price}</span>
                   <span className="text-sm text-[var(--sc-text-dimmer)] line-through">{getMRP(selectedDetailProduct.price)}</span>
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${inStock ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
                     {inStock ? `${maxStock} in stock` : 'Out of stock'}
                   </span>
                 </div>
+              )}
               <div className="space-y-2.5 pt-2">
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={(e) => { handleAddToCartClick(e, selectedDetailProduct); setSelectedDetailProduct(null); }} disabled={!inStock}
                     className="py-3 px-3 bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-emerald-dark)] text-[var(--sc-emerald-dark)] hover:text-white font-bold text-sm rounded-xl transition-all border border-[var(--sc-border)]/60 flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer">
-                    <span className="material-symbols-outlined text-base">add_shopping_cart</span>
+                    <span className="material-symbols-outlined text-base leading-none shrink-0">add_shopping_cart</span>
                     <span>ADD TO CART</span>
                   </button>
                   <button onClick={() => { const p = selectedDetailProduct; setSelectedDetailProduct(null); handleBuyNowAndProceed(p); }} disabled={!inStock}
                     className="py-3 px-3 bg-[#171310] hover:bg-[var(--sc-emerald-dark)] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer">
-                    <span className="material-symbols-outlined text-base">shopping_bag</span>
-                    <span>BUY NOW</span>
+                    <span className="material-symbols-outlined text-base leading-none shrink-0">{selectedDetailProduct.type === 'Rental' ? 'autorenew' : 'shopping_bag'}</span>
+                    <span>{selectedDetailProduct.type === 'Rental' ? 'RENT NOW' : 'BUY NOW'}</span>
                   </button>
                 </div>
               </div>
@@ -421,17 +504,21 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
       {/* Checkout Modal */}
       {checkoutProduct && (() => {
         const qty = getProductQty(checkoutProduct.id) || 1;
-        const itemPriceNum = parseInt(checkoutProduct.price.replace(/[^0-9]/g, ''), 10) || 2500;
-        const subtotal = itemPriceNum * qty;
+        const isRental = checkoutProduct.type === 'Rental';
+        const rental = isRental
+          ? calcRental({ originalPrice: checkoutProduct.price, rentalPricePerDay: checkoutProduct.rentalPriceDay || '₹0/day', days: rentalDays, qty })
+          : null;
+        const subtotal = rental ? rental.rentalTotal : (parseInt(checkoutProduct.price.replace(/[^0-9]/g, ''), 10) || 2500) * qty;
+        const securityDepositNum = rental ? rental.securityDeposit : 0;
         const shippingFeeNum = calcShippingFeeForProduct(deliveryState, deliveryPincode);
-        const totalPayableNum = subtotal + shippingFeeNum;
+        const totalPayableNum = subtotal + securityDepositNum + shippingFeeNum;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 md:p-6 animate-in fade-in duration-200 overflow-y-auto">
             <div className="bg-[var(--sc-bg-soft)] rounded-3xl p-5 md:p-8 max-w-2xl w-full border border-[var(--sc-border)]/60 shadow-2xl space-y-5 my-6 relative max-h-[92vh] overflow-y-auto">
               <div className="flex justify-between items-start border-b border-[var(--sc-border)]/40 pb-3">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--sc-emerald-dark)] bg-[var(--sc-emerald-dark)]/10 px-3 py-1 rounded-full">Direct Purchase</span>
-                  <h2 className="font-serif text-xl md:text-2xl font-bold text-[var(--sc-text)] mt-1.5">Express Checkout ({qty} {qty === 1 ? 'Item' : 'Items'})</h2>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--sc-emerald-dark)] bg-[var(--sc-emerald-dark)]/10 px-3 py-1 rounded-full">{isRental ? 'Jewellery Rental' : 'Direct Purchase'}</span>
+                  <h2 className="font-serif text-xl md:text-2xl font-bold text-[var(--sc-text)] mt-1.5">{isRental ? 'Express Rental Checkout' : 'Express Checkout'} ({qty} {qty === 1 ? 'Item' : 'Items'})</h2>
                 </div>
                 <button onClick={() => setCheckoutProduct(null)} className="p-2 hover:bg-[var(--sc-accent-warm)] rounded-full cursor-pointer">
                   <span className="material-symbols-outlined text-lg">close</span>
@@ -443,15 +530,45 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                   <h3 className="font-serif font-bold text-[var(--sc-text)]">{checkoutProduct.name}</h3>
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1 text-xs text-[var(--sc-text-dim)]">
                     <span>Qty: <strong>{qty}</strong></span>
-                    <span>Subtotal: <strong>₹{subtotal.toLocaleString('en-IN')}</strong></span>
+                    <span>{isRental ? 'Rental' : 'Subtotal'}: <strong>₹{subtotal.toLocaleString('en-IN')}</strong></span>
+                    {isRental && <span>Deposit: <strong>{formatINR(securityDepositNum)}</strong></span>}
                     <span>Shipping: <strong>{shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`}</strong></span>
                   </div>
                   <div className="pt-1 flex items-center justify-between border-t border-[var(--sc-border)]">
-                    <span className="text-xs font-bold text-[var(--sc-text-dim)]">Total:</span>
+                    <span className="text-xs font-bold text-[var(--sc-text-dim)]">Total Payable:</span>
                     <span className="text-lg font-black text-[var(--sc-emerald-dark)]">₹{totalPayableNum.toLocaleString('en-IN')}</span>
                   </div>
                 </div>
               </div>
+              {isRental && rental && (
+                <div className="space-y-3 bg-[var(--sc-surface)] p-4 rounded-2xl border border-[var(--sc-border)]/40">
+                  <h3 className="font-serif font-bold text-[var(--sc-text)] text-sm flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[var(--sc-emerald-dark)]">autorenew</span>
+                    Rental Period & Security Deposit
+                  </h3>
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-2">Rental days</label>
+                    <div className="flex flex-wrap gap-2">
+                      {RENTAL_DAY_OPTIONS.map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setRentalDays(d)}
+                          className={`px-3.5 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${rentalDays === d ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)]' : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] border-[var(--sc-border)] hover:bg-[var(--sc-emerald)]/10'}`}
+                        >
+                          {d} {d === 1 ? 'Day' : 'Days'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 text-xs text-[var(--sc-text-dim)] border-t border-[var(--sc-border)] pt-3">
+                    <div className="flex justify-between"><span>Rental ({formatINR(rental.rentalPerDayPerPiece)}/day × {rental.days} days)</span><span className="font-bold text-[var(--sc-text)]">{formatINR(rental.rentalTotal)}</span></div>
+                    <div className="flex justify-between"><span>Security deposit (refundable)</span><span className="font-bold text-[var(--sc-emerald-dark)]">{formatINR(rental.securityDeposit)}</span></div>
+                    <div className="flex justify-between border-t border-[var(--sc-border)] pt-1.5 font-bold text-sm text-[var(--sc-text)]"><span>Rental + Deposit</span><span className="text-[var(--sc-emerald-dark)]">{formatINR(rental.rentalPlusDeposit)}</span></div>
+                    <p className="text-[11px] text-[var(--sc-text-dim)] pt-1">{SECURITY_DEPOSIT_NOTE}</p>
+                  </div>
+                </div>
+              )}
               <div className="space-y-4">
                 <h3 className="font-serif font-bold text-[var(--sc-text)] text-sm flex items-center gap-2">
                   <span className="material-symbols-outlined text-[var(--sc-emerald-dark)]">local_shipping</span>
@@ -497,17 +614,26 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                     </div>
                     <span className="bg-emerald-50 text-emerald-800 font-bold text-[10px] px-2.5 py-1 rounded-full border border-emerald-200">100% Secure</span>
                   </div>
-                  <div className="bg-[var(--sc-bg-soft)] p-3.5 rounded-xl border border-[var(--sc-border)]/30 flex items-center justify-between text-xs">
-                    <span>Total Payable:</span>
-                    <strong className="text-base text-[var(--sc-emerald-dark)]">₹{totalPayableNum.toLocaleString('en-IN')}</strong>
+                  <div className="bg-[var(--sc-bg-soft)] p-3.5 rounded-xl border border-[var(--sc-border)]/30 space-y-1 text-xs">
+                    {isRental && rental && (
+                      <>
+                        <div className="flex justify-between"><span>Rental ({formatINR(rental.rentalPerDayPerPiece)} × {rental.days} days):</span><span className="font-bold text-[var(--sc-text)]">{formatINR(rental.rentalTotal)}</span></div>
+                        <div className="flex justify-between"><span>Security deposit (refundable):</span><span className="font-bold text-[var(--sc-text)]">{formatINR(rental.securityDeposit)}</span></div>
+                        <div className="flex justify-between"><span>Shipping:</span><span className="font-bold text-[var(--sc-text)]">{shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`}</span></div>
+                      </>
+                    )}
+                    <div className="flex justify-between border-t border-[var(--sc-border)] pt-1.5">
+                      <span className="font-bold">Total Payable:</span>
+                      <strong className="text-base text-[var(--sc-emerald-dark)]">₹{totalPayableNum.toLocaleString('en-IN')}</strong>
+                    </div>
                   </div>
                 </div>
               </div>
               <div className="pt-2">
                 <button type="button" onClick={handleRazorpayJewelleryOrder}
                   className="w-full py-4 bg-[var(--sc-emerald-dark)] hover:bg-[var(--sc-emerald)] text-white font-bold text-sm rounded-2xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer">
-                  <span className="material-symbols-outlined text-lg">lock</span>
-                  <span>PAY ₹{totalPayableNum.toLocaleString('en-IN')} & PLACE ORDER</span>
+                  <span className="material-symbols-outlined text-base leading-none shrink-0">lock</span>
+                  <span>{isRental ? `PAY ₹${totalPayableNum.toLocaleString('en-IN')} & CONFIRM RENTAL` : `PAY ₹${totalPayableNum.toLocaleString('en-IN')} & PLACE ORDER`}</span>
                 </button>
               </div>
             </div>
@@ -523,8 +649,8 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
               <span className="material-symbols-outlined text-3xl">check_circle</span>
             </div>
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--sc-emerald-dark)] bg-[var(--sc-emerald-dark)]/10 px-3 py-1 rounded-full">Order Ref: {confirmedOrderCard.ref}</span>
-              <h2 className="font-serif text-2xl font-bold text-[var(--sc-text)] mt-2">Order Placed Successfully!</h2>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--sc-emerald-dark)] bg-[var(--sc-emerald-dark)]/10 px-3 py-1 rounded-full">{confirmedOrderCard.isRental ? 'Rental Ref' : 'Order Ref'}: {confirmedOrderCard.ref}</span>
+              <h2 className="font-serif text-2xl font-bold text-[var(--sc-text)] mt-2">{confirmedOrderCard.isRental ? 'Rental Booked Successfully!' : 'Order Placed Successfully!'}</h2>
             </div>
             <div className="bg-[var(--sc-surface)] p-4 rounded-2xl border border-[var(--sc-border)]/40 text-left space-y-3 text-xs">
               <div className="flex items-center gap-3 border-b border-[var(--sc-border)] pb-3">
@@ -532,7 +658,14 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                 <div><h4 className="font-serif font-bold text-[var(--sc-text)]">{confirmedOrderCard.productName}</h4></div>
               </div>
               <div className="space-y-1.5 text-[var(--sc-text-dim)]">
-                <div className="flex justify-between"><span>Item Price:</span><span className="font-bold text-[var(--sc-text)]">{confirmedOrderCard.itemPrice}</span></div>
+                <div className="flex justify-between"><span>{confirmedOrderCard.isRental ? 'Rental:' : 'Item Price:'}</span><span className="font-bold text-[var(--sc-text)]">{confirmedOrderCard.itemPrice}</span></div>
+                {confirmedOrderCard.isRental && confirmedOrderCard.securityDeposit && (
+                  <>
+                    <div className="flex justify-between"><span>Security Deposit (refundable):</span><span className="font-bold text-[var(--sc-emerald-dark)]">{confirmedOrderCard.securityDeposit}</span></div>
+                    {confirmedOrderCard.rentalPeriod && <div className="flex justify-between"><span>Rental Period:</span><span className="font-bold text-[var(--sc-text)]">{confirmedOrderCard.rentalPeriod}</span></div>}
+                    <p className="text-[11px] text-[var(--sc-text-dim)]">{SECURITY_DEPOSIT_NOTE}</p>
+                  </>
+                )}
                 <div className="flex justify-between"><span>Shipping:</span><span className="font-bold text-[var(--sc-emerald-dark)]">{confirmedOrderCard.shippingFee}</span></div>
                 <div className="flex justify-between border-t border-[var(--sc-border)] pt-1.5 font-bold text-sm text-[var(--sc-text)]">
                   <span>Total Paid:</span><span className="text-[var(--sc-emerald-dark)]">{confirmedOrderCard.totalAmount}</span>

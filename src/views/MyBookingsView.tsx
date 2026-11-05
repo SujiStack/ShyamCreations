@@ -1,16 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { ViewMode, HennaBooking, JewelleryRental, CustomerAccount, PendingAuthAction } from '../types';
+import { ViewMode, HennaBooking, JewelleryRental, CustomerAccount, PendingAuthAction, DisabledSlot } from '../types';
 import {
   fetchAllUserBookingsAndOrdersByPhone,
   rescheduleSupabaseBooking,
+  rescheduleSupabaseJewelleryBooking,
 } from '../lib/supabaseService';
 import { STUDIO_INFO } from '../data/mockData';
+import { formatDateDDMMYY, getDateBadgeParts } from '../lib/dateFormat';
+import { DateInputDDMMYY } from '../components/DateInputDDMMYY';
+
+// Canonical slots — must match HennaBookingView / CheckAvailabilityView exactly.
+// The old reschedule modal offered '09:00 AM', '11:00 AM', … which never
+// matched the booked/disabled checks (exact string compare), so rescheduled
+// bookings neither blocked their new slot nor were blocked by existing ones.
+export const APPOINTMENT_SLOTS = [
+  'Morning Slot (09:00 AM - 01:00 PM)',
+  'Evening Slot (04:00 PM - 09:00 PM)',
+] as const;
+
+const digitsOf = (v?: string | null) => (v || '').replace(/[^0-9]/g, '');
+const todayStr = () => new Date().toISOString().split('T')[0];
 
 interface MyBookingsViewProps {
   hennaBookings: HennaBooking[];
   jewelleryRentals: JewelleryRental[];
+  disabledSlots?: DisabledSlot[];
   onNavigate: (view: ViewMode) => void;
   onRescheduleBooking?: (bookingId: string, newDate: string, newTimeSlot: string, notes?: string) => void;
+  onRescheduleJewelleryRental?: (bookingId: string, newStartDate: string, notes?: string) => void;
   customerUser?: CustomerAccount | null;
   onOpenAuthModal?: () => void;
   onRequireAuth?: (pendingAction?: PendingAuthAction) => void;
@@ -70,8 +87,10 @@ const RefChip: React.FC<{ id?: string }> = ({ id }) => {
 export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
   hennaBookings,
   jewelleryRentals,
+  disabledSlots = [],
   onNavigate,
   onRescheduleBooking,
+  onRescheduleJewelleryRental,
   customerUser = null,
   onOpenAuthModal,
   onRequireAuth,
@@ -79,11 +98,14 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
   // Tab state: show a unified timeline of all bookings
   const [activeTab, setActiveTab] = useState<'all' | 'henna' | 'jewellery'>('all');
   const [selectedBooking, setSelectedBooking] = useState<HennaBooking | JewelleryRental | null>(null);
-  const [rescheduleBooking, setRescheduleBooking] = useState<HennaBooking | null>(null);
+  const [rescheduleBooking, setRescheduleBooking] = useState<HennaBooking | JewelleryRental | null>(null);
+  const [rescheduleKind, setRescheduleKind] = useState<'henna' | 'jewellery'>('henna');
   const [newDate, setNewDate] = useState<string>('');
-  const [newTimeSlot, setNewTimeSlot] = useState<string>('10:00 AM');
+  const [newTimeSlot, setNewTimeSlot] = useState<string>(APPOINTMENT_SLOTS[0]);
   const [rescheduleNotes, setRescheduleNotes] = useState<string>('');
   const [rescheduleStatus, setRescheduleStatus] = useState<string>('');
+  const [rescheduleTone, setRescheduleTone] = useState<'success' | 'warn' | 'error'>('success');
+  const [rescheduleSummary, setRescheduleSummary] = useState<string>('');
   const [isSubmittingReschedule, setIsSubmittingReschedule] = useState<boolean>(false);
 
   const [mobileInput, setMobileInput] = useState<string>(customerUser?.phone || '');
@@ -236,37 +258,189 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     }
   };
 
-  const handleOpenReschedule = (booking: HennaBooking) => {
+  // A booking may only be rescheduled by its owner: either the signed-in
+  // customer whose phone/email matches, or a guest who has just looked the
+  // booking up with their own mobile number / ref. Previously the button was
+  // shown on every row (the pre-search list contains ALL customers' bookings)
+  // with no check at all.
+  const isBookingOwner = (b: HennaBooking | JewelleryRental): boolean => {
+    // Fetched jewellery rentals carry no phone/email on the rental object, so
+    // ownership for them is proven by the phone/ref lookup itself.
+    const bPhone = digitsOf((b as HennaBooking).phone);
+    const bEmail = ((b as HennaBooking).clientEmail || '').toLowerCase();
+    if (customerUser) {
+      if (!bPhone && !bEmail) return hasSearched;
+      const userDigits = digitsOf(customerUser.phone);
+      if (userDigits && bPhone && (bPhone.includes(userDigits) || userDigits.includes(bPhone))) return true;
+      if (customerUser.email && bEmail && bEmail === customerUser.email.toLowerCase()) return true;
+      // Logged in as someone else — never allow rescheduling this booking.
+      return false;
+    }
+    // Guest: must have searched in this session (phone/ref lookup).
+    return hasSearched;
+  };
+
+  const isReschedulableStatus = (status?: string) => {
+    const s = (status || '').toLowerCase();
+    return s !== 'cancelled' && s !== 'completed' && s !== 'returned' && s !== 'delivered';
+  };
+
+  const handleOpenReschedule = (booking: HennaBooking | JewelleryRental, kind: 'henna' | 'jewellery') => {
+    if (!isReschedulableStatus((booking as HennaBooking).status)) {
+      setSearchMessage('This booking is already closed and cannot be rescheduled. Please contact the studio on WhatsApp.');
+      return;
+    }
+    if (!customerUser && !hasSearched) {
+      setSearchMessage('Please search with your mobile number or reference code first, then reschedule your appointment.');
+      return;
+    }
+    if (customerUser && !isBookingOwner(booking)) {
+      setSearchMessage('This booking belongs to a different customer. Please sign in with the phone number used for the booking to reschedule it.');
+      if (onRequireAuth) onRequireAuth({ action: 'view-price', targetView: 'my-bookings' });
+      else if (onOpenAuthModal) onOpenAuthModal();
+      return;
+    }
+    const currentDate = kind === 'henna' ? (booking as HennaBooking).date : (booking as JewelleryRental).startDate;
+    const currentSlot = kind === 'henna' ? (booking as HennaBooking).timeSlot : '';
+    const slotIsCanonical = (APPOINTMENT_SLOTS as readonly string[]).includes(currentSlot);
     setRescheduleBooking(booking);
-    setNewDate(booking.date || new Date().toISOString().split('T')[0]);
-    setNewTimeSlot(booking.timeSlot || '10:00 AM');
-    setRescheduleNotes(booking.rescheduleNotes || '');
+    setRescheduleKind(kind);
+    setNewDate(currentDate || todayStr());
+    setNewTimeSlot(slotIsCanonical ? currentSlot : APPOINTMENT_SLOTS[0]);
+    setRescheduleNotes(kind === 'henna' ? (booking as HennaBooking).rescheduleNotes || '' : '');
     setRescheduleStatus('');
+    setRescheduleTone('success');
+    setRescheduleSummary('');
   };
 
   const handleConfirmReschedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rescheduleBooking) return;
+    if (!rescheduleBooking || isSubmittingReschedule) return;
+
+    const isHenna = rescheduleKind === 'henna';
+    const bookingRef = (rescheduleBooking as HennaBooking).ref || (rescheduleBooking as JewelleryRental).ref || '';
+    // Prefer ref for the DB lookup (local ids like `hb-…` are not DB ids);
+    // App/local matching accepts ref OR id, so this is safe there too.
+    const key = bookingRef || (rescheduleBooking as HennaBooking).id || '';
+    const currentDate = isHenna ? (rescheduleBooking as HennaBooking).date : (rescheduleBooking as JewelleryRental).startDate;
+    const currentSlot = isHenna ? (rescheduleBooking as HennaBooking).timeSlot : '';
+    const fmt = (d: string) => formatDateDDMMYY(d);
+
+    // --- Validation (previously: none beyond the HTML min attribute) ---
+    if (!newDate) {
+      setRescheduleTone('error');
+      setRescheduleStatus('Please choose a new date.');
+      return;
+    }
+    if (newDate < todayStr()) {
+      setRescheduleTone('error');
+      setRescheduleStatus('New date cannot be in the past. Please choose today or a future date.');
+      return;
+    }
+    if (isHenna) {
+      if (!newTimeSlot) {
+        setRescheduleTone('error');
+        setRescheduleStatus('Please choose a time slot.');
+        return;
+      }
+      if (newDate === currentDate && newTimeSlot === currentSlot) {
+        setRescheduleTone('error');
+        setRescheduleStatus('This is the same date and slot as your current appointment. Please pick a different one.');
+        return;
+      }
+      // Slot must be free: not booked by another appointment, not disabled by the studio.
+      const poolByRef = new Map<string, HennaBooking>();
+      [...(fetchedHennaBookings ?? []), ...hennaBookings].forEach((b) => {
+        if (b?.ref) poolByRef.set(b.ref, b);
+      });
+      const slotTaken = Array.from(poolByRef.values()).some(
+        (b) =>
+          b.ref !== bookingRef &&
+          b.id !== key &&
+          b.date === newDate &&
+          b.timeSlot === newTimeSlot &&
+          (b.status || '').toLowerCase() !== 'cancelled'
+      );
+      if (slotTaken) {
+        setRescheduleTone('error');
+        setRescheduleStatus('That date and slot is already booked. Please choose another slot.');
+        return;
+      }
+      const slotDisabled = disabledSlots.some((s) => s.date === newDate && s.timeSlot === newTimeSlot);
+      if (slotDisabled) {
+        setRescheduleTone('error');
+        setRescheduleStatus('That date and slot is not available (disabled by the studio). Please choose another slot.');
+        return;
+      }
+    } else if (newDate === currentDate) {
+      setRescheduleTone('error');
+      setRescheduleStatus('This is the same start date as your current rental. Please pick a different date.');
+      return;
+    }
+
     setIsSubmittingReschedule(true);
     setRescheduleStatus('Updating...');
+    setRescheduleTone('success');
     try {
-      const result = await rescheduleSupabaseBooking(
-        rescheduleBooking.id || rescheduleBooking.ref,
-        newDate,
-        newTimeSlot,
-        rescheduleNotes
-      );
-      if (result) {
-        setRescheduleStatus('✓ Rescheduled successfully!');
-        if (onRescheduleBooking) {
-          try { onRescheduleBooking(rescheduleBooking.id || rescheduleBooking.ref, newDate, newTimeSlot, rescheduleNotes); } catch {}
-        }
-        setTimeout(() => setRescheduleBooking(null), 1500);
+      const result = isHenna
+        ? await rescheduleSupabaseBooking(key, newDate, newTimeSlot, rescheduleNotes)
+        : await rescheduleSupabaseJewelleryBooking(key, newDate, rescheduleNotes);
+
+      // Apply locally in every case (fetched list, selected modal, App state +
+      // localStorage). Previously only App state was updated, so the list the
+      // customer was looking at (fetched results) never changed until they
+      // searched again, and device-only bookings always showed "failed".
+      if (isHenna) {
+        setFetchedHennaBookings((prev) =>
+          prev
+            ? prev.map((b) =>
+                b.id === key || b.ref === bookingRef
+                  ? { ...b, date: newDate, timeSlot: newTimeSlot, status: 'Rescheduled', rescheduleNotes: rescheduleNotes || b.rescheduleNotes }
+                  : b
+              )
+            : prev
+        );
+        try { onRescheduleBooking?.(key, newDate, newTimeSlot, rescheduleNotes); } catch { /* local only */ }
       } else {
-        setRescheduleStatus('⚠ Reschedule failed. Please try again.');
+        setFetchedJewelleryRentals((prev) =>
+          prev
+            ? prev.map((r) =>
+                r.id === key || r.ref === bookingRef
+                  ? { ...r, startDate: newDate, returnDue: newDate, status: 'Rescheduled' }
+                  : r
+              )
+            : prev
+        );
+        try { onRescheduleJewelleryRental?.(key, newDate, rescheduleNotes); } catch { /* local only */ }
       }
-    } catch (err) {
-      setRescheduleStatus(`⚠ Reschedule failed: ${err}`);
+      setSelectedBooking((prev) => {
+        if (!prev || ((prev as HennaBooking).ref || (prev as JewelleryRental).ref) !== bookingRef) return prev;
+        return isHenna
+          ? { ...(prev as HennaBooking), date: newDate, timeSlot: newTimeSlot, status: 'Rescheduled', rescheduleNotes: rescheduleNotes || (prev as HennaBooking).rescheduleNotes }
+          : { ...(prev as JewelleryRental), startDate: newDate, returnDue: newDate, status: 'Rescheduled' };
+      });
+
+      const summary = isHenna
+        ? `New appointment: ${fmt(newDate)} • ${newTimeSlot}`
+        : `New rental start: ${fmt(newDate)}`;
+      setRescheduleSummary(summary);
+
+      if (result.success) {
+        setRescheduleTone('success');
+        setRescheduleStatus(`✓ Rescheduled successfully! ${summary}. Updated in the studio database.`);
+      } else {
+        // Local-only / offline / not-found-in-DB bookings: keep the customer's
+        // change on this device and ask them to confirm with the studio,
+        // instead of discarding it with a generic failure.
+        setRescheduleTone('warn');
+        setRescheduleStatus(
+          `✓ Rescheduled on this device to ${summary}. ${result.error || 'The studio database was not updated — please WhatsApp the studio to confirm your new date.'}`
+        );
+      }
+      window.setTimeout(() => setRescheduleBooking(null), 3500);
+    } catch (err: any) {
+      setRescheduleTone('error');
+      setRescheduleStatus(`⚠ Reschedule failed: ${err?.message || err}. Please try again or WhatsApp the studio.`);
     } finally {
       setIsSubmittingReschedule(false);
     }
@@ -282,14 +456,20 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     ? allHenna
     : allJewellery;
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (d.toString() === 'Invalid Date') return dateStr;
-    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  };
+  // Display format for all booking dates: DD/MM/YY.
+  // Stored values remain ISO YYYY-MM-DD for the DB.
+  const formatDate = (dateStr: string) => formatDateDDMMYY(dateStr);
 
   const getBookingType = (b: any): 'henna' | 'jewellery' => {
+    // Respect the explicit type first. Jewellery orders are stored as
+    // HennaBooking with serviceCategory 'Jewellery Rental & Sale', so the old
+    // check (serviceName + serviceCategory => henna) mis-labelled every
+    // jewellery order as a Mehendi appointment and offered Mehendi
+    // rescheduling for it.
+    if (b?.type === 'jewellery') return 'jewellery';
+    if (b?.type === 'henna') return 'henna';
+    const category = String(b?.serviceCategory || '').toLowerCase();
+    if (category.includes('jewell')) return 'jewellery';
     if ('serviceName' in b && 'serviceCategory' in b) return 'henna';
     return 'jewellery';
   };
@@ -422,10 +602,10 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                     isHenna ? 'bg-[var(--sc-emerald-deep)] text-[var(--sc-emerald-lux)]' : 'bg-[#f3ebd9] text-[#3a4f3a]'
                   }`}>
                     <span className="text-[9px] uppercase font-bold tracking-wider">
-                      {formatDate(getBookingDate(booking)).split(' ')[1] || '---'}
+                      {getDateBadgeParts(getBookingDate(booking)).month}
                     </span>
                     <span className="text-xl font-bold leading-none">
-                      {new Date(getBookingDate(booking)).getDate() || '---'}
+                      {getDateBadgeParts(getBookingDate(booking)).day}
                     </span>
                   </div>
 
@@ -519,14 +699,16 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                   </div>
                 </div>
 
-                {isHenna && (
-                  <div className="mt-3 pt-3 border-t border-[var(--sc-border)]/50 flex gap-2 text-xs">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleOpenReschedule(booking as HennaBooking); }}
-                      className="px-3 py-1.5 bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] rounded-lg font-semibold hover:bg-[var(--sc-emerald)]/20 transition-all"
-                    >
-                      Reschedule
-                    </button>
+                {(isHenna || isReschedulableStatus(status)) && (
+                  <div className="mt-3 pt-3 border-t border-[var(--sc-border)]/50 flex flex-wrap gap-2 text-xs">
+                    {isReschedulableStatus(status) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleOpenReschedule(booking as any, isHenna ? 'henna' : 'jewellery'); }}
+                        className="px-3 py-1.5 bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] rounded-lg font-semibold hover:bg-[var(--sc-emerald)]/20 transition-all"
+                      >
+                        {isHenna ? 'Reschedule Appointment' : 'Reschedule Rental'}
+                      </button>
+                    )}
                     <a
                       href={`https://wa.me/${STUDIO_INFO.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
                         `Hi, I have a question about my booking ${getBookingRef(booking)}.`
@@ -638,6 +820,16 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                       <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Rate</span>
                       <span className="font-bold text-[var(--sc-emerald-dark)]">{(booking as JewelleryRental).dailyRate}</span>
                     </div>
+                    {(booking as JewelleryRental).depositAmount && (booking as JewelleryRental).depositAmount !== '₹0' && (
+                      <div>
+                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">
+                          {(booking as JewelleryRental).status === 'Returned'
+                            ? 'Security Deposit (refunded after safe return)'
+                            : 'Security Deposit (refundable after safe return)'}
+                        </span>
+                        <span className="font-bold text-[var(--sc-emerald-dark)]">{(booking as JewelleryRental).depositAmount}</span>
+                      </div>
+                    )}
                     {booking.returnDue && (
                       <div>
                         <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Return Due</span>
@@ -694,81 +886,143 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
       })()}
 
       {/* Reschedule Modal */}
-      {rescheduleBooking && (
+      {rescheduleBooking && (() => {
+        const isHenna = rescheduleKind === 'henna';
+        const currentDate = isHenna ? (rescheduleBooking as HennaBooking).date : (rescheduleBooking as JewelleryRental).startDate;
+        const currentSlot = isHenna ? (rescheduleBooking as HennaBooking).timeSlot : '';
+        const bookingRef = (rescheduleBooking as HennaBooking).ref || (rescheduleBooking as JewelleryRental).ref || '';
+        const bookingName = (rescheduleBooking as HennaBooking).serviceName || (rescheduleBooking as JewelleryRental).productName || 'Booking';
+        // Legacy bookings may carry an old slot format — keep it selectable.
+        const slotOptions: string[] = [...APPOINTMENT_SLOTS];
+        if (currentSlot && !slotOptions.includes(currentSlot)) slotOptions.push(currentSlot);
+        const poolByRef = new Map<string, HennaBooking>();
+        [...(fetchedHennaBookings ?? []), ...hennaBookings].forEach((b) => { if (b?.ref) poolByRef.set(b.ref, b); });
+        const slotBooked = (slot: string) =>
+          Array.from(poolByRef.values()).some(
+            (b) => b.ref !== bookingRef && b.date === newDate && b.timeSlot === slot && (b.status || '').toLowerCase() !== 'cancelled'
+          );
+        const slotDisabled = (slot: string) => disabledSlots.some((s) => s.date === newDate && s.timeSlot === slot);
+        const waText = encodeURIComponent(
+          `Hi Shyam Creations, I rescheduled my ${isHenna ? 'Mehendi appointment' : 'jewellery rental'} (REF: ${bookingRef}). New date: ${newDate}${isHenna ? `, Slot: ${newTimeSlot}` : ''}.${rescheduleNotes ? ` Reason: ${rescheduleNotes}` : ''} Please confirm.`
+        );
+        const toneClass =
+          rescheduleTone === 'success'
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            : rescheduleTone === 'warn'
+              ? 'bg-amber-50 text-amber-800 border-amber-200'
+              : 'bg-red-50 text-red-700 border-red-200';
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
-          <div className="bg-[var(--sc-surface)] rounded-3xl max-w-lg w-full p-6 border border-[var(--sc-emerald)]/50 shadow-2xl">
+          <div className="bg-[var(--sc-surface)] rounded-3xl max-w-lg w-full p-6 border border-[var(--sc-emerald)]/50 shadow-2xl max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-[var(--sc-border)] pb-4 mb-4">
               <div>
-                <span className="text-[10px] font-bold uppercase text-[var(--sc-emerald-dark)] tracking-wide">Reschedule Appointment</span>
-                <h3 className="font-serif text-xl font-bold text-[var(--sc-text)] mt-1">
-                  {rescheduleBooking.serviceName}
-                </h3>
+                <span className="text-[10px] font-bold uppercase text-[var(--sc-emerald-dark)] tracking-wide">
+                  {isHenna ? 'Reschedule Appointment' : 'Reschedule Rental'}
+                </span>
+                <h3 className="font-serif text-xl font-bold text-[var(--sc-text)] mt-1">{bookingName}</h3>
               </div>
               <button
                 onClick={() => setRescheduleBooking(null)}
-                className="p-1 hover:bg-[var(--sc-accent-warm)] rounded-full text-[var(--sc-text-dim)]"
+                disabled={isSubmittingReschedule}
+                className="p-1 hover:bg-[var(--sc-accent-warm)] rounded-full text-[var(--sc-text-dim)] disabled:opacity-40"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
 
+            <div className="mb-4 bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] rounded-2xl p-3 text-xs space-y-1">
+              <p><span className="font-bold text-[var(--sc-text-dimmer)]">Reference:</span> <span className="font-mono font-semibold">{bookingRef}</span></p>
+              <p><span className="font-bold text-[var(--sc-text-dimmer)]">Current:</span> {formatDate(currentDate)}{currentSlot ? ` • ${currentSlot}` : ''}</p>
+              {rescheduleSummary && (
+                <p><span className="font-bold text-[var(--sc-text-dimmer)]">New:</span> <span className="font-semibold text-[var(--sc-emerald-dark)]">{rescheduleSummary}</span></p>
+              )}
+            </div>
+
             {rescheduleStatus && (
-              <p className={`mb-4 text-xs font-semibold ${
-                rescheduleStatus.includes('✓') ? 'text-emerald-600' : 'text-amber-600'
-              }`}>
+              <p className={`mb-4 text-xs font-semibold border rounded-xl px-3 py-2 ${toneClass}`}>
                 {rescheduleStatus}
               </p>
             )}
 
             <form onSubmit={handleConfirmReschedule} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-[var(--sc-text-dimmer)] mb-1">New Date</label>
-                <input
-                  type="date"
+                <label className="block text-xs font-bold text-[var(--sc-text-dimmer)] mb-1">
+                  {isHenna ? 'New Date' : 'New Rental Start Date'}
+                </label>
+                <DateInputDDMMYY
                   required
-                  min={new Date().toISOString().split('T')[0]}
+                  min={todayStr()}
                   value={newDate}
-                  onChange={(e) => setNewDate(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-sm focus:outline-none focus:border-[var(--sc-emerald)]"
+                  onChange={setNewDate}
+                  disabled={isSubmittingReschedule}
                 />
+                {!isHenna && (
+                  <p className="text-[11px] text-[var(--sc-text-dim)] mt-1">Your return date shifts by the same number of days, so the rental duration stays the same.</p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-[var(--sc-text-dimmer)] mb-2">Preferred Time Slot</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {['09:00 AM', '11:00 AM', '02:00 PM', '04:00 PM', '06:00 PM'].map((slot) => (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() => setNewTimeSlot(slot)}
-                      className={`py-2.5 px-3 text-xs rounded-xl border font-bold transition-all ${
-                        newTimeSlot === slot
-                          ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)] shadow'
-                          : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] border-[var(--sc-border)] hover:bg-[var(--sc-emerald)]/10'
-                      }`}
-                    >
-                      {slot}
-                    </button>
-                  ))}
+              {isHenna && (
+                <div>
+                  <label className="block text-xs font-bold text-[var(--sc-text-dimmer)] mb-2">Preferred Time Slot</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {slotOptions.map((slot) => {
+                      const booked = slotBooked(slot);
+                      const disabled = slotDisabled(slot);
+                      const unavailable = booked || disabled;
+                      const isSelected = newTimeSlot === slot;
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          disabled={unavailable || isSubmittingReschedule}
+                          onClick={() => setNewTimeSlot(slot)}
+                          className={`py-2.5 px-3 text-xs rounded-xl border font-bold transition-all text-left ${
+                            isSelected
+                              ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)] shadow'
+                              : unavailable
+                                ? 'bg-slate-100 text-slate-400 border-slate-200 line-through cursor-not-allowed'
+                                : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] border-[var(--sc-border)] hover:bg-[var(--sc-emerald)]/10'
+                          }`}
+                        >
+                          {slot}
+                          {booked && <span className="block text-[10px] font-semibold no-underline">Already booked</span>}
+                          {!booked && disabled && <span className="block text-[10px] font-semibold">Not available</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-[var(--sc-text-dim)] mt-1">Only free slots for the selected date are selectable.</p>
                 </div>
-              </div>
+              )}
 
               <div>
-                <label className="block text-xs font-bold text-[var(--sc-text-dimmer)] mb-1">Reason / Notes</label>
+                <label className="block text-xs font-bold text-[var(--sc-text-dimmer)] mb-1">Reason / Notes (optional)</label>
                 <textarea
                   rows={2}
                   value={rescheduleNotes}
                   onChange={(e) => setRescheduleNotes(e.target.value)}
                   placeholder="e.g. Venue timing updated, family event change..."
-                  className="w-full px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-sm focus:outline-none focus:border-[var(--sc-emerald)]"
+                  disabled={isSubmittingReschedule}
+                  className="w-full px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-sm focus:outline-none focus:border-[var(--sc-emerald)] disabled:opacity-50"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
+                {rescheduleSummary && (
+                  <a
+                    href={`https://wa.me/${STUDIO_INFO.phone.replace(/[^0-9]/g, '')}?text=${waText}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2 bg-[#2C6B4F] text-white rounded-xl font-bold text-sm"
+                  >
+                    WhatsApp Studio to Confirm
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={() => setRescheduleBooking(null)}
-                  className="px-4 py-2 bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] rounded-xl font-bold text-sm"
+                  disabled={isSubmittingReschedule}
+                  className="px-4 py-2 bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] rounded-xl font-bold text-sm disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -777,13 +1031,14 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                   disabled={isSubmittingReschedule}
                   className="px-5 py-2 bg-[var(--sc-emerald)] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  <span>{isSubmittingReschedule ? '...' : 'Confirm'}</span>
+                  <span>{isSubmittingReschedule ? 'Updating…' : 'Confirm Reschedule'}</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

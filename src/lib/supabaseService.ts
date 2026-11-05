@@ -5,6 +5,7 @@ import {
   saveCustomSupabaseCredentials,
 } from './supabase';
 import { HennaBooking, JewelleryCustomer, JewelleryBooking, CustomerAccount, CartItem, JewelleryRental } from '../types';
+import { formatDateDDMMYY } from './dateFormat';
 
 export interface DBJewelleryBookingRow {
   id?: string;
@@ -411,38 +412,161 @@ export async function insertSupabaseBooking(
   }
 }
 
+export interface RescheduleResult {
+  success: boolean;
+  isConfigured: boolean;
+  /** 'not-configured' | 'not-found' | 'error' — lets the UI fall back to a
+   *  device-local reschedule instead of showing a generic failure for
+   *  bookings that only exist in localStorage. */
+  reason?: 'not-configured' | 'not-found' | 'error';
+  error?: string;
+}
+
+const isUuidValue = (v: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
 export async function rescheduleSupabaseBooking(
   refOrId: string,
   newDate: string,
   newSlot: string,
   rescheduleNotes?: string
-): Promise<boolean> {
-  if (!isSupabaseConfigured()) return false;
+): Promise<RescheduleResult> {
+  if (!refOrId?.trim() || !newDate?.trim() || !newSlot?.trim()) {
+    return { success: false, isConfigured: isSupabaseConfigured(), reason: 'error', error: 'Booking reference, date and time slot are required.' };
+  }
+  if (!isSupabaseConfigured()) {
+    return { success: false, isConfigured: false, reason: 'not-configured', error: 'Supabase is not configured.' };
+  }
 
   try {
+    // 1. Find the row first (prefer `ref`; only query `id` when it is a real
+    //    UUID — PostgREST errors out on `id.eq.<non-uuid>` for uuid columns,
+    //    which made every local `hb-…` / `bag-order-…` id fail silently).
+    let existing: DBBookingRow | null = null;
+    const byRef = await supabase.from('bookings').select('*').eq('ref', refOrId.trim()).maybeSingle();
+    if (byRef.error) {
+      console.error('Supabase reschedule lookup error:', byRef.error.message);
+      return { success: false, isConfigured: true, reason: 'error', error: byRef.error.message };
+    }
+    existing = (byRef.data as DBBookingRow | null) || null;
+
+    if (!existing && isUuidValue(refOrId.trim())) {
+      const byId = await supabase.from('bookings').select('*').eq('id', refOrId.trim()).maybeSingle();
+      if (byId.error) {
+        console.error('Supabase reschedule lookup error:', byId.error.message);
+        return { success: false, isConfigured: true, reason: 'error', error: byId.error.message };
+      }
+      existing = (byId.data as DBBookingRow | null) || null;
+    }
+
+    if (!existing) {
+      return { success: false, isConfigured: true, reason: 'not-found', error: `No booking found in the database for "${refOrId}". It may only exist on this device.` };
+    }
+
+    // 2. Preserve the original notes (insert stores `location. specialRequests`
+    //    in `notes`). Previously the reschedule reason overwrote them entirely.
     const updatePayload: Partial<DBBookingRow> = {
       date: newDate,
       slot: newSlot,
       status: 'Rescheduled',
     };
-    if (rescheduleNotes) {
-      updatePayload.notes = rescheduleNotes;
+    if (rescheduleNotes?.trim()) {
+      updatePayload.notes = existing.notes
+        ? `${existing.notes} | Rescheduled: ${rescheduleNotes.trim()}`
+        : `Rescheduled: ${rescheduleNotes.trim()}`;
     }
 
     const { error } = await supabase
       .from('bookings')
       .update(updatePayload)
-      .or(`ref.eq.${refOrId},id.eq.${refOrId}`);
+      .eq('id', existing.id as string);
 
     if (error) {
       console.error('Supabase reschedule error:', error.message);
-      return false;
+      return { success: false, isConfigured: true, reason: 'error', error: error.message };
     }
 
-    return true;
-  } catch (err) {
+    return { success: true, isConfigured: true };
+  } catch (err: any) {
     console.error('Failed to reschedule in Supabase:', err);
-    return false;
+    return { success: false, isConfigured: true, reason: 'error', error: err?.message || 'Network error connecting to Supabase.' };
+  }
+}
+
+/**
+ * Reschedule a jewellery rental/booking: shift its start date (and end date
+ * by the same number of days, preserving the rental duration).
+ */
+export async function rescheduleSupabaseJewelleryBooking(
+  refOrId: string,
+  newStartDate: string,
+  rescheduleNotes?: string
+): Promise<RescheduleResult> {
+  if (!refOrId?.trim() || !newStartDate?.trim()) {
+    return { success: false, isConfigured: isSupabaseConfigured(), reason: 'error', error: 'Booking reference and new date are required.' };
+  }
+  if (!isSupabaseConfigured()) {
+    return { success: false, isConfigured: false, reason: 'not-configured', error: 'Supabase is not configured.' };
+  }
+
+  try {
+    const byRef = await supabase.from('jewellery_bookings').select('*').eq('booking_ref', refOrId.trim()).maybeSingle();
+    if (byRef.error) {
+      console.error('Supabase jewellery reschedule lookup error:', byRef.error.message);
+      return { success: false, isConfigured: true, reason: 'error', error: byRef.error.message };
+    }
+    let existing = (byRef.data as DBJewelleryBookingRow | null) || null;
+
+    if (!existing && isUuidValue(refOrId.trim())) {
+      const byId = await supabase.from('jewellery_bookings').select('*').eq('id', refOrId.trim()).maybeSingle();
+      if (byId.error) {
+        console.error('Supabase jewellery reschedule lookup error:', byId.error.message);
+        return { success: false, isConfigured: true, reason: 'error', error: byId.error.message };
+      }
+      existing = (byId.data as DBJewelleryBookingRow | null) || null;
+    }
+
+    if (!existing) {
+      return { success: false, isConfigured: true, reason: 'not-found', error: `No jewellery booking found in the database for "${refOrId}". It may only exist on this device.` };
+    }
+
+    // Shift end date by the same delta so the rental duration is preserved.
+    let newEndDate = existing.end_date || existing.start_date || '';
+    if (existing.start_date && existing.end_date && newEndDate) {
+      const oldStart = new Date(existing.start_date).getTime();
+      const oldEnd = new Date(existing.end_date).getTime();
+      const deltaDays = Math.round((new Date(newStartDate).getTime() - oldStart) / 86400000);
+      if (!Number.isNaN(deltaDays)) {
+        newEndDate = new Date(oldEnd + deltaDays * 86400000).toISOString().split('T')[0];
+      }
+    } else if (!existing.end_date) {
+      newEndDate = newStartDate;
+    }
+
+    const updatePayload: Partial<DBJewelleryBookingRow> = {
+      start_date: newStartDate,
+      end_date: newEndDate,
+    };
+    if (rescheduleNotes?.trim()) {
+      updatePayload.notes = existing.notes
+        ? `${existing.notes} | Rescheduled: ${rescheduleNotes.trim()}`
+        : `Rescheduled: ${rescheduleNotes.trim()}`;
+    }
+
+    const { error } = await supabase
+      .from('jewellery_bookings')
+      .update(updatePayload)
+      .eq('id', existing.id as string);
+
+    if (error) {
+      console.error('Supabase jewellery reschedule error:', error.message);
+      return { success: false, isConfigured: true, reason: 'error', error: error.message };
+    }
+
+    return { success: true, isConfigured: true };
+  } catch (err: any) {
+    console.error('Failed to reschedule jewellery booking in Supabase:', err);
+    return { success: false, isConfigured: true, reason: 'error', error: err?.message || 'Network error connecting to Supabase.' };
   }
 }
 
@@ -1307,7 +1431,10 @@ export async function insertSupabaseJewelleryBooking(
 }
 
 /**
- * Update status of a jewellery booking in Supabase 'jewellery_bookings'
+ * Update status of a jewellery booking in Supabase 'jewellery_bookings'.
+ * When a rental is marked Returned (safe recovery), the security deposit
+ * refund is recorded in the notes so the studio has an audit trail — the
+ * actual money refund is processed via Razorpay/UPI outside this app.
  */
 export async function updateSupabaseJewelleryBookingStatus(
   refOrId: string,
@@ -1316,10 +1443,41 @@ export async function updateSupabaseJewelleryBookingStatus(
   if (!isSupabaseConfigured()) return false;
 
   try {
+    // Look the row up first (ref, then UUID id) instead of
+    // `.or(id.eq.<ref>,booking_ref.eq.<ref>)`, which errors on the UUID
+    // column when a text ref is passed.
+    let existing: DBJewelleryBookingRow | null = null;
+    const byRef = await supabase.from('jewellery_bookings').select('*').eq('booking_ref', refOrId.trim()).maybeSingle();
+    if (byRef.error) {
+      console.error('Supabase jewellery booking lookup error:', byRef.error.message);
+      return false;
+    }
+    existing = (byRef.data as DBJewelleryBookingRow | null) || null;
+    if (!existing && isUuidValue(refOrId.trim())) {
+      const byId = await supabase.from('jewellery_bookings').select('*').eq('id', refOrId.trim()).maybeSingle();
+      if (byId.error) {
+        console.error('Supabase jewellery booking lookup error:', byId.error.message);
+        return false;
+      }
+      existing = (byId.data as DBJewelleryBookingRow | null) || null;
+    }
+    if (!existing) return false;
+
+    const updatePayload: Partial<DBJewelleryBookingRow> = { status };
+    const deposit = existing.deposit_amount || '₹0';
+    if (
+      status === 'Returned' &&
+      deposit !== '₹0' &&
+      !(existing.notes || '').includes('deposit refunded')
+    ) {
+      const refundNote = `Security deposit ${deposit} refunded on safe return (${formatDateDDMMYY(new Date().toISOString().split('T')[0])}).`;
+      updatePayload.notes = existing.notes ? `${existing.notes} | ${refundNote}` : refundNote;
+    }
+
     const { error } = await supabase
       .from('jewellery_bookings')
-      .update({ status })
-      .or(`id.eq.${refOrId},booking_ref.eq.${refOrId}`);
+      .update(updatePayload)
+      .eq('id', existing.id as string);
 
     if (error) {
       console.error('Supabase update jewellery_bookings status error:', error.message);
@@ -1518,6 +1676,8 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         startDate: jb.startDate,
         returnDue: jb.endDate || jb.startDate,
         dailyRate: jb.dailyRate || '₹1,500/day',
+        depositAmount: jb.depositAmount,
+        durationDays: jb.durationDays,
         status: jb.status === 'Returned' ? 'Returned' : (jb.status === 'Overdue' ? 'Overdue' : 'Active Rental'),
         paymentStatus: jb.paymentStatus,
         paymentMethod: jb.paymentMethod,

@@ -22,6 +22,8 @@ import {
   getSupabaseCredentials,
   saveCustomSupabaseCredentials,
 } from '../lib/supabase';
+import { formatDateDDMMYY } from '../lib/dateFormat';
+import { DateInputDDMMYY } from '../components/DateInputDDMMYY';
 import {
   getRazorpayKeyId,
   saveCustomRazorpayKeyId,
@@ -1184,7 +1186,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         {booking.serviceName}
                       </td>
                       <td className="p-4 text-[#ded8ce]">
-                        <p className="font-bold">{booking.date}</p>
+                        <p className="font-bold">{formatDateDDMMYY(booking.date)}</p>
                         <p className="text-[10px] text-[#8A7F72]">{booking.timeSlot}</p>
                       </td>
                       <td className="p-4 text-xs text-[#8A7F72] max-w-xs truncate">
@@ -1285,7 +1287,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         </div>
                       </td>
                       <td className="p-4 font-bold text-white">{rental.dailyRate}</td>
-                      <td className="p-4 text-[#ded8ce]">{rental.startDate}</td>
+                      <td className="p-4 text-[#ded8ce]">{formatDateDDMMYY(rental.startDate)}</td>
                       <td className="p-4 font-bold text-[#D4A24C]">{rental.returnDue}</td>
                       <td className="p-4">
                         <span
@@ -1447,6 +1449,16 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                             <p className="text-[10px] text-[#8A7F72]">
                               Item: {cust.itemPrice} | Courier: {cust.shippingFee}
                             </p>
+                            {(() => {
+                              // Rental deposit is stored in the internal notes
+                              // (jewellery_customers has no deposit column) —
+                              // surface it here so Item + Courier = Total can
+                              // be reconciled for rentals.
+                              const m = (cust.notes || '').match(/security deposit (₹[\d,]+)/i);
+                              return m ? (
+                                <p className="text-[10px] text-amber-300 font-bold">Deposit: {m[1]} (refundable after safe return)</p>
+                              ) : null;
+                            })()}
                           </td>
 
                           <td className="p-3.5 font-mono text-[11px]">
@@ -1635,9 +1647,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           </td>
 
                           <td className="p-3.5">
-                            <p className="text-xs font-semibold text-white">{bk.startDate}</p>
+                            <p className="text-xs font-semibold text-white">{formatDateDDMMYY(bk.startDate)}</p>
                             {bk.endDate && bk.endDate !== bk.startDate && (
-                              <p className="text-[10px] text-[#8A7F72]">To: {bk.endDate}</p>
+                              <p className="text-[10px] text-[#8A7F72]">To: {formatDateDDMMYY(bk.endDate)}</p>
                             )}
                             {bk.durationDays && bk.durationDays > 1 && (
                               <p className="text-[10px] text-amber-300 font-bold">{bk.durationDays} Days Duration</p>
@@ -1646,6 +1658,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
                           <td className="p-3.5">
                             <p className="font-bold text-emerald-400 text-sm">{bk.totalPrice}</p>
+                            {bk.dailyRate && <p className="text-[10px] text-[#ded8ce]">{bk.dailyRate}</p>}
+                            {bk.depositAmount && bk.depositAmount !== '₹0' && (
+                              <p className="text-[10px] text-amber-300 font-bold">Deposit: {bk.depositAmount} (refundable after safe return)</p>
+                            )}
                             <p className="text-[10px] text-[#8A7F72] truncate max-w-[140px]" title={bk.location}>
                               📍 {bk.location || 'Studio Pickup'}
                             </p>
@@ -1764,13 +1780,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-[#8A7F72]">Date *</label>
-                  <input
-                    type="date"
+                  <DateInputDDMMYY
                     required
                     value={newSlotDate}
-                    onChange={(e) => setNewSlotDate(e.target.value)}
+                    onChange={setNewSlotDate}
                     min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-lg text-white text-xs focus:outline-none focus:border-[#E0B45F]"
                   />
                 </div>
                 <div className="space-y-1">
@@ -1850,7 +1864,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       .map((slot, idx) => (
                         <tr key={idx} className="hover:bg-[#262b28] transition-colors">
                           <td className="p-3.5 font-semibold text-white">
-                            {new Date(slot.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {formatDateDDMMYY(slot.date)}
                           </td>
                           <td className="p-3.5 text-[#ded8ce]">
                             {slot.timeSlot}

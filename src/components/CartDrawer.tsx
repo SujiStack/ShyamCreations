@@ -1,5 +1,12 @@
 import React from 'react';
 import { CartItem, Product } from '../types';
+import { calcMixedBag, formatINR, parsePriceAmount } from '../lib/rentalCalc';
+
+// The bag has no rental-period picker (that happens at checkout), so the
+// drawer previews rent using the same default as checkout: 3 days.
+// Rental items are priced at their per-day rent — never the original
+// jewellery price, which is only used internally for the 30% deposit.
+const PREVIEW_RENTAL_DAYS = 3;
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -26,17 +33,20 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const calculateSubtotal = () => {
-    return cartItems.reduce((sum, item) => {
-      const priceStr = item.product.price || '₹2,500';
-      const num = parseInt(priceStr.replace(/[^0-9]/g, ''), 10) || 2500;
-      return sum + num * item.quantity;
-    }, 0);
-  };
-
-  const subtotal = calculateSubtotal();
-  const shippingFee = cartItems.length > 0 ? 50 : 0;
-  const grandTotal = subtotal + shippingFee;
+  const hasRentalItems = cartItems.some((i) => i.product.type === 'Rental');
+  const bagCalc = calcMixedBag({
+    saleSubtotal: cartItems
+      .filter((i) => i.product.type !== 'Rental')
+      .reduce((sum, item) => sum + (parsePriceAmount(item.product.price) || 2500) * item.quantity, 0),
+    rentalItems: cartItems
+      .filter((i) => i.product.type === 'Rental')
+      .map((i) => ({ originalPrice: i.product.price, rentalPricePerDay: i.product.rentalPriceDay || '₹0/day', qty: i.quantity })),
+    rentalDays: PREVIEW_RENTAL_DAYS,
+    shipping: 0,
+  });
+  const subtotal = bagCalc.subtotal;
+  const securityDepositNum = bagCalc.securityDeposit;
+  const grandTotal = subtotal + securityDepositNum;
 
   const renderContent = () => {
     if (!isAuthenticated) {
@@ -74,8 +84,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     }
 
     return cartItems.map((item) => {
-      const unitPriceNum = parseInt(item.product.price.replace(/[^0-9]/g, ''), 10) || 2500;
-      const itemTotal = unitPriceNum * item.quantity;
+      const isRental = item.product.type === 'Rental';
+      const rentalPerDay = parsePriceAmount(item.product.rentalPriceDay);
+      const itemTotal = isRental
+        ? rentalPerDay * item.quantity * PREVIEW_RENTAL_DAYS
+        : (parsePriceAmount(item.product.price) || 2500) * item.quantity;
       const maxStock = item.product.stock ?? 1;
       return (
         <div key={item.productId} className="p-3 bg-[var(--sc-surface)] border border-[var(--sc-border)]/40 rounded-2xl shadow-xs flex gap-3 relative group">
@@ -88,6 +101,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 className="font-serif text-sm font-bold text-[var(--sc-text)] hover:text-[var(--sc-emerald-dark)] cursor-pointer truncate">
                 {item.product.name}
               </h4>
+              {isRental && (
+                <p className="text-[10px] font-bold text-emerald-700">
+                  RENTAL {formatINR(rentalPerDay)}/day × {PREVIEW_RENTAL_DAYS} days
+                </p>
+              )}
               <button onClick={() => onRemoveItem(item.productId)} className="text-[var(--sc-text-dimmer)] hover:text-red-600 transition-colors p-1 cursor-pointer">
                 <span className="material-symbols-outlined text-sm">delete</span>
               </button>
@@ -129,14 +147,25 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           <div className="p-5 bg-[var(--sc-surface)] border-t border-[var(--sc-border)]/40 space-y-4">
             <div className="space-y-1.5 text-sm">
               <div className="flex justify-between text-[var(--sc-text-dim)]">
-                <span>Subtotal</span><span className="font-semibold text-[var(--sc-text)]">₹{subtotal.toLocaleString('en-IN')}</span>
+                <span>{hasRentalItems ? 'Sale + Rental (3 days)' : 'Subtotal'}</span>
+                <span className="font-semibold text-[var(--sc-text)]">₹{subtotal.toLocaleString('en-IN')}</span>
               </div>
+              {hasRentalItems && (
+                <div className="flex justify-between text-[var(--sc-text-dim)]">
+                  <span>Security Deposit (refundable)</span>
+                  <span className="font-semibold text-[var(--sc-emerald-dark)]">{formatINR(securityDepositNum)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-[var(--sc-text-dim)]">
-                <span>Shipping</span><span className="font-semibold text-[var(--sc-text)]">₹{shippingFee}</span>
+                <span>Shipping</span><span className="font-semibold text-[var(--sc-text)]">At checkout</span>
               </div>
               <div className="flex justify-between text-base font-bold text-[var(--sc-text)] pt-2 border-t border-[var(--sc-border)]/30">
-                <span>Total</span><span className="text-[var(--sc-emerald-dark)] text-lg">₹{grandTotal.toLocaleString('en-IN')}</span>
+                <span>Total (excl. shipping)</span>
+                <span className="text-[var(--sc-emerald-dark)] text-lg">₹{grandTotal.toLocaleString('en-IN')}</span>
               </div>
+              {hasRentalItems && (
+                <p className="text-[11px] text-[var(--sc-text-dim)]">Rental period & deposit are confirmed at checkout.</p>
+              )}
             </div>
             <button id="btn-proceed-to-checkout" onClick={() => { onProceedToCheckout(); onClose(); }}
               className="w-full py-3.5 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald)] text-white font-bold rounded-xl text-sm tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer">

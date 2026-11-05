@@ -8,6 +8,13 @@ import {
   insertSupabasePayment,
 } from '../lib/supabaseService';
 import { initiateRazorpayPayment } from '../lib/razorpay';
+import {
+  calcMixedBag,
+  formatINR,
+  RENTAL_DAY_OPTIONS,
+  SECURITY_DEPOSIT_NOTE,
+} from '../lib/rentalCalc';
+import { formatDateDDMMYY } from '../lib/dateFormat';
 
 interface CartCheckoutModalProps {
   isOpen: boolean;
@@ -46,6 +53,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   const [deliveryPincode, setDeliveryPincode] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [rentalDays, setRentalDays] = useState<number>(3);
   const [confirmedReceipt, setConfirmedReceipt] = useState<{
     ref: string;
     itemsSummary: string;
@@ -59,6 +67,8 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
     shippingFee: string;
     totalAmount: string;
     transactionId: string;
+    securityDeposit?: string;
+    rentalBreakdown?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -70,17 +80,24 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 
   if (!isOpen && !confirmedReceipt) return null;
 
-  const calculateSubtotal = () => {
-    return cartItems.reduce((sum, item) => {
-      const priceStr = item.product.price || '₹2,500';
-      const num = parseInt(priceStr.replace(/[^0-9]/g, ''), 10) || 2500;
-      return sum + num * item.quantity;
-    }, 0);
-  };
-
-  const subtotal = calculateSubtotal();
+  // Sale items: full price. Rental items: per-day rent × rentalDays, plus
+  // 30% of the original price as a refundable security deposit.
+  const hasRentalItems = cartItems.some((i) => i.product.type === 'Rental');
+  const saleSubtotal = cartItems
+    .filter((i) => i.product.type !== 'Rental')
+    .reduce((sum, item) => sum + (parseInt((item.product.price || '₹2,500').replace(/[^0-9]/g, ''), 10) || 2500) * item.quantity, 0);
   const shippingFeeNum = calcShippingFee(deliveryState, deliveryPincode);
-  const grandTotal = subtotal + shippingFeeNum;
+  const bagCalc = calcMixedBag({
+    saleSubtotal,
+    rentalItems: cartItems
+      .filter((i) => i.product.type === 'Rental')
+      .map((i) => ({ originalPrice: i.product.price, rentalPricePerDay: i.product.rentalPriceDay || '₹0/day', qty: i.quantity })),
+    rentalDays,
+    shipping: shippingFeeNum,
+  });
+  const subtotal = bagCalc.subtotal; // sale + rental (excl. deposit & shipping)
+  const securityDepositNum = bagCalc.securityDeposit;
+  const grandTotal = bagCalc.grandTotal;
 
   const handleRazorpayCheckout = async () => {
     setFormError(null);
@@ -109,6 +126,14 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       setFormError('Please enter the delivery Pincode.');
       return;
     }
+    // Guard: never let a rental check out at ₹0/day rent.
+    const invalidRental = cartItems.find(
+      (i) => i.product.type === 'Rental' && (parseInt((i.product.rentalPriceDay || '').replace(/[^0-9]/g, ''), 10) || 0) <= 0
+    );
+    if (invalidRental) {
+      setFormError(`Rental price is not set for ${invalidRental.product.name}. Please remove it or WhatsApp the studio to book this rental.`);
+      return;
+    }
 
     setIsSubmitting(true);
     const refCode = `BAG-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -122,8 +147,10 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         customerName: customerName.trim(),
         customerEmail: customerUser?.email || 'client@shyamcreations.com',
         customerPhone: customerPhone.trim(),
-        serviceOrProductName: `Shopping Bag: ${itemsSummary}`,
-        notes: `Delivery Address: ${customerAddress.trim()}, State: ${deliveryState.trim()}, Pincode: ${deliveryPincode.trim()}`,
+        serviceOrProductName: hasRentalItems
+          ? `Shopping Bag (Rental ${bagCalc.days} days): ${itemsSummary} — Rental ${formatINR(bagCalc.rentalTotal)} + Deposit ${formatINR(securityDepositNum)}`
+          : `Shopping Bag: ${itemsSummary}`,
+        notes: `${hasRentalItems ? `Rental ${bagCalc.days} days, deposit ${formatINR(securityDepositNum)} refundable after safe return. ` : ''}Delivery Address: ${customerAddress.trim()}, State: ${deliveryState.trim()}, Pincode: ${deliveryPincode.trim()}`,
         jewelleryId: cartItems[0]?.productId,
         deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         itemsToDecrement: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
@@ -143,6 +170,23 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       const formattedSubtotal = `₹${subtotal.toLocaleString('en-IN')}`;
       const formattedShipping = shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`;
       const formattedTotal = `₹${grandTotal.toLocaleString('en-IN')}`;
+      const formattedDeposit = formatINR(securityDepositNum);
+      // Customer-facing — no original amount shown (calculation only).
+      const rentalBreakdown = hasRentalItems
+        ? `Rental ${bagCalc.days} days: rental ${formatINR(bagCalc.rentalTotal)} + security deposit ${formattedDeposit} (refundable after safe return)`
+        : '';
+      // Internal studio record (DB notes only).
+      const rentalBreakdownInternal = hasRentalItems
+        ? `Original total ${formatINR(bagCalc.originalTotal)} | ${rentalBreakdown}`
+        : '';
+      const startDateIso = new Date().toISOString().split('T')[0];
+      const endDateIso = hasRentalItems
+        ? new Date(Date.now() + (bagCalc.days - 1) * 86400000).toISOString().split('T')[0]
+        : startDateIso;
+      const rentalDailySummary = cartItems
+        .filter((i) => i.product.type === 'Rental')
+        .map((i) => `${i.product.name} ${i.product.rentalPriceDay || ''}`)
+        .join(', ');
 
       // Save into Supabase 'jewellery_customers' table
       await insertSupabaseJewelleryCustomer({
@@ -161,7 +205,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         upiTransactionId: verifiedTxnId,
         paymentStatus: 'Paid',
         orderStatus: 'Processing',
-        notes: `Bag items: ${itemsSummary} | Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}`,
+        notes: `${rentalBreakdownInternal ? rentalBreakdownInternal + ' | ' : ''}${hasRentalItems ? SECURITY_DEPOSIT_NOTE + ' | ' : ''}Bag items: ${itemsSummary} | Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}`,
       });
 
       // Save into Supabase 'jewellery_bookings' table
@@ -172,16 +216,19 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         email: customerUser?.email || 'client@shyamcreations.com',
         productName: `Bag: ${itemsSummary}`,
         jewelleryId: cartItems[0]?.productId || 'bag-items',
-        bookingType: 'Purchase',
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
+        bookingType: hasRentalItems ? 'Rental' : 'Purchase',
+        startDate: startDateIso,
+        endDate: endDateIso,
+        durationDays: hasRentalItems ? bagCalc.days : 1,
+        dailyRate: hasRentalItems ? rentalDailySummary : undefined,
+        depositAmount: hasRentalItems ? formattedDeposit : '₹0',
         totalPrice: formattedTotal,
         location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         paymentStatus: 'Paid',
         paymentMethod: 'Razorpay (Online Payment)',
         transactionId: verifiedTxnId,
         status: 'Confirmed',
-        notes: `Bag checkout (${cartItems.length} items). Address: ${customerAddress.trim()}`,
+        notes: `${rentalBreakdownInternal ? rentalBreakdownInternal + ' | ' : ''}${hasRentalItems ? SECURITY_DEPOSIT_NOTE + ' | ' : ''}Bag checkout (${cartItems.length} items). Rental period: ${formatDateDDMMYY(startDateIso)} to ${formatDateDDMMYY(endDateIso)}. Address: ${customerAddress.trim()}`,
       });
 
       // Decrement stock for every product in cart
@@ -207,7 +254,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         wa: customerPhone.trim(),
         deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         shippingFee: formattedShipping,
-        specialRequests: `Bag Purchase: ${itemsSummary}`,
+        specialRequests: `${rentalBreakdown ? rentalBreakdown + ' | ' : ''}${hasRentalItems ? SECURITY_DEPOSIT_NOTE + ' | ' : ''}Bag ${hasRentalItems ? 'Rental' : 'Purchase'}: ${itemsSummary}`,
         status: 'Confirmed',
         type: 'jewellery',
         paymentStatus: 'Paid',
@@ -233,6 +280,8 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         shippingFee: formattedShipping,
         totalAmount: formattedTotal,
         transactionId: verifiedTxnId,
+        securityDeposit: hasRentalItems ? formattedDeposit : undefined,
+        rentalBreakdown,
       });
     } catch (err: any) {
       console.error('Razorpay bag checkout error:', err);
@@ -245,7 +294,10 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   const openWhatsAppBagReceipt = () => {
     if (!confirmedReceipt) return;
     const cleanPhone = STUDIO_INFO.whatsapp.replace(/[^0-9]/g, '');
-    const message = `Hello Shyam Creations Studio! I have placed an order for my Shopping Bag on your website:\n\n🛍️ *Order Ref:* ${confirmedReceipt.ref}\n👑 *Items:* ${confirmedReceipt.itemsSummary}\n💰 *Items Subtotal:* ${confirmedReceipt.subtotal}\n🚚 *Shipping Charges:* ${confirmedReceipt.shippingFee}\n💵 *Grand Total:* ${confirmedReceipt.totalAmount}\n📲 *Verified Txn ID:* ${confirmedReceipt.transactionId}\n\n👤 *Customer Name:* ${confirmedReceipt.clientName}\n📞 *Phone:* ${confirmedReceipt.phone}\n📍 *Delivery Address:* ${confirmedReceipt.deliveryAddress}, ${confirmedReceipt.deliveryState} - ${confirmedReceipt.deliveryPincode}\n\nPlease confirm dispatch. Thank you!`;
+    const rentalLine = confirmedReceipt.securityDeposit
+      ? `\n🔁 *Rental:* ${confirmedReceipt.rentalBreakdown}\n🛡️ *Security Deposit (refundable after safe return):* ${confirmedReceipt.securityDeposit}`
+      : '';
+    const message = `Hello Shyam Creations Studio! I have placed an order for my Shopping Bag on your website:\n\n🛍️ *Order Ref:* ${confirmedReceipt.ref}\n👑 *Items:* ${confirmedReceipt.itemsSummary}\n💰 *Items Subtotal / Rental:* ${confirmedReceipt.subtotal}${rentalLine}\n🚚 *Shipping Charges:* ${confirmedReceipt.shippingFee}\n💵 *Grand Total:* ${confirmedReceipt.totalAmount}\n📲 *Verified Txn ID:* ${confirmedReceipt.transactionId}\n\n👤 *Customer Name:* ${confirmedReceipt.clientName}\n📞 *Phone:* ${confirmedReceipt.phone}\n📍 *Delivery Address:* ${confirmedReceipt.deliveryAddress}, ${confirmedReceipt.deliveryState} - ${confirmedReceipt.deliveryPincode}\n\nPlease confirm dispatch. Thank you!`;
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
@@ -293,9 +345,18 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 
             <div className="space-y-2 text-[var(--sc-text-dim)]">
               <div className="flex justify-between">
-                <span>Subtotal:</span>
+                <span>Subtotal / Rental:</span>
                 <span className="font-bold text-[var(--sc-text)]">{confirmedReceipt.subtotal}</span>
               </div>
+              {confirmedReceipt.securityDeposit && (
+                <>
+                  <div className="flex justify-between">
+                    <span>Security Deposit (refundable):</span>
+                    <span className="font-bold text-[var(--sc-emerald-dark)]">{confirmedReceipt.securityDeposit}</span>
+                  </div>
+                  <p className="text-[11px]">{SECURITY_DEPOSIT_NOTE}</p>
+                </>
+              )}
               <div className="flex justify-between">
                 <span>Shipping Charges:</span>
                 <span className="font-bold text-[var(--sc-emerald-dark)]">{confirmedReceipt.shippingFee}</span>
@@ -379,18 +440,51 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                     />
                     <div>
                       <p className="font-bold text-[var(--sc-text)]">{item.product.name}</p>
-                      <p className="text-[11px] text-[var(--sc-text-dim)]">Qty: {item.quantity}</p>
+                      <p className="text-[11px] text-[var(--sc-text-dim)]">
+                        {item.product.type === 'Rental'
+                          ? `Rental ${item.product.rentalPriceDay || ''}`
+                          : `Qty: ${item.quantity}`}
+                        {item.product.type === 'Rental' && ` • Qty: ${item.quantity}`}
+                      </p>
                     </div>
                   </div>
-                  <span className="font-bold text-[var(--sc-emerald-dark)]">{item.product.price}</span>
+                  <span className="font-bold text-[var(--sc-emerald-dark)]">
+                    {item.product.type === 'Rental' ? item.product.rentalPriceDay || item.product.price : item.product.price}
+                  </span>
                 </div>
               ))}
             </div>
 
+            {hasRentalItems && (
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-[var(--sc-text-dim)]">Rental days (for rental items)</label>
+                <div className="flex flex-wrap gap-2">
+                  {RENTAL_DAY_OPTIONS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setRentalDays(d)}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer ${rentalDays === d ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)]' : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] border-[var(--sc-border)]'}`}
+                    >
+                      {d} {d === 1 ? 'Day' : 'Days'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="border-t border-[var(--sc-border)] pt-2 flex items-center justify-between text-xs font-bold">
-              <span>Items Subtotal:</span>
+              <span>{hasRentalItems ? 'Sale + Rental Subtotal:' : 'Items Subtotal:'}</span>
               <span className="text-[var(--sc-text)]">₹{subtotal.toLocaleString('en-IN')}</span>
             </div>
+            {hasRentalItems && (
+              <>
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span>Security Deposit (refundable):</span>
+                  <span className="text-[var(--sc-emerald-dark)]">{formatINR(securityDepositNum)}</span>
+                </div>
+                <p className="text-[10px] text-[var(--sc-text-dim)]">{SECURITY_DEPOSIT_NOTE}</p>
+              </>
+            )}
             <div className="border-t border-[var(--sc-border)] pt-2 flex items-center justify-between text-xs font-bold">
               <span>Shipping Charges:</span>
               <span className="text-[var(--sc-emerald-dark)]">
@@ -504,9 +598,15 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                 <div className="bg-[var(--sc-bg-soft)] p-3.5 rounded-xl border border-[var(--sc-border)]/30 flex items-center justify-between text-xs">
                   <div>
                     <div className="flex justify-between">
-                      <span className="text-[var(--sc-text-dim)] block">Items Subtotal:</span>
+                      <span className="text-[var(--sc-text-dim)] block">{hasRentalItems ? 'Sale + Rental Subtotal:' : 'Items Subtotal:'}</span>
                       <span className="font-bold text-[var(--sc-text)]">₹{subtotal.toLocaleString('en-IN')}</span>
                     </div>
+                    {hasRentalItems && (
+                      <div className="flex justify-between">
+                        <span className="text-[var(--sc-text-dim)]">Security Deposit (refundable):</span>
+                        <span className="font-bold text-[var(--sc-text)]">{formatINR(securityDepositNum)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-[var(--sc-text-dim)]">Shipping Charges:</span>
                       <span className="font-bold text-[var(--sc-emerald-dark)]">

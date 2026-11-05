@@ -74,6 +74,9 @@ export interface JewelleryRental {
   startDate: string;
   returnDue: string;
   dailyRate: string;
+  /** 30% of original price, refundable after safe return (rentals only). */
+  depositAmount?: string;
+  durationDays?: number;
   status: string;
   paymentStatus?: string;
   paymentMethod?: string;

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ViewMode, HennaBooking, DisabledSlot, ServiceCategoryKey } from '../types';
 import { STUDIO_INFO } from '../data/mockData';
+import { formatDateDDMMYY, parseDateParts } from '../lib/dateFormat';
+import { DateInputDDMMYY } from '../components/DateInputDDMMYY';
 
 interface CheckAvailabilityViewProps {
   onNavigate: (view: ViewMode, category?: ServiceCategoryKey) => void;
@@ -46,7 +48,10 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
   // Get availability for a week (7 days)
   const getWeekAvailability = useMemo(() => (startDate: string) => {
     const dates = [];
-    const start = new Date(startDate);
+    // The DD/MM/YY input emits '' while typing — fall back to today so the
+    // week view never crashes on an invalid date.
+    const safeStart = parseDateParts(startDate) ? startDate : new Date().toISOString().split('T')[0];
+    const start = new Date(safeStart);
     for (let i = 0; i < 7; i++) {
       const date = new Date(start);
       date.setDate(start.getDate() + i);
@@ -73,10 +78,8 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
 
   const weekData = getWeekAvailability(selectedDate);
 
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  };
+  // Display format: DD/MM/YY (stored values remain ISO YYYY-MM-DD).
+  const formatDate = (dateStr: string) => formatDateDDMMYY(dateStr);
 
   const handleDateChange = (date: string) => {
     setSelectedDate(date);
@@ -115,12 +118,11 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <input
-                type="date"
+              <DateInputDDMMYY
                 value={selectedDate}
-                onChange={(e) => handleDateChange(e.target.value)}
+                onChange={handleDateChange}
                 min={new Date().toISOString().split('T')[0]}
-                className="px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-sm font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs cursor-pointer"
+                className="w-44"
               />
             </div>
           </div>
@@ -203,7 +205,7 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
         {/* Selected Date Detail */}
         <div className="bg-[var(--sc-bg-soft)] border-t border-[var(--sc-border)]/60 p-4 sm:p-6">
           <h3 className="font-serif font-bold text-lg text-[var(--sc-text)] mb-4">
-            Availability for {formatDate(selectedDate)}
+            Availability for {selectedDate ? formatDate(selectedDate) : '— enter a date as DD/MM/YY —'}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {weekData.find((d) => d.date === selectedDate)?.availability.map((slot) => (
