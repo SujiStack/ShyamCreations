@@ -49,6 +49,9 @@ export interface HennaBooking {
   type: 'henna' | 'jewellery';
   paymentStatus?: string;
   paymentAmount?: string;
+  /** Actual price of the selected service/product (full price, even when
+   *  only an advance was paid — paymentAmount is what was actually paid). */
+  totalPrice?: string;
   paymentMethod?: string;
   transactionId?: string;
 }
@@ -71,10 +74,13 @@ export interface JewelleryRental {
   productName: string;
   ref: string;
   image: string;
+  clientName?: string;
+  phone?: string;
+  email?: string;
   startDate: string;
   returnDue: string;
   dailyRate: string;
-  /** 30% of original price, refundable after safe return (rentals only). */
+  /** 40% of original price, refundable after safe return (rentals only). */
   depositAmount?: string;
   durationDays?: number;
   status: string;

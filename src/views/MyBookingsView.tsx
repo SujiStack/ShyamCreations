@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import { ViewMode, HennaBooking, JewelleryRental, CustomerAccount, PendingAuthAction, DisabledSlot } from '../types';
 import {
   fetchAllUserBookingsAndOrdersByPhone,
@@ -267,7 +268,9 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     // Fetched jewellery rentals carry no phone/email on the rental object, so
     // ownership for them is proven by the phone/ref lookup itself.
     const bPhone = digitsOf((b as HennaBooking).phone);
-    const bEmail = ((b as HennaBooking).clientEmail || '').toLowerCase();
+    // Placeholder emails from the DB fallback mapping are not real contacts.
+    const rawEmail = ((b as HennaBooking).clientEmail || '').toLowerCase();
+    const bEmail = rawEmail === 'client@example.com' ? '' : rawEmail;
     if (customerUser) {
       if (!bPhone && !bEmail) return hasSearched;
       const userDigits = digitsOf(customerUser.phone);
@@ -285,21 +288,19 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     return s !== 'cancelled' && s !== 'completed' && s !== 'returned' && s !== 'delivered';
   };
 
-  const handleOpenReschedule = (booking: HennaBooking | JewelleryRental, kind: 'henna' | 'jewellery') => {
-    if (!isReschedulableStatus((booking as HennaBooking).status)) {
-      setSearchMessage('This booking is already closed and cannot be rescheduled. Please contact the studio on WhatsApp.');
-      return;
+  const showRescheduleBlocked = (title: string, text: string, focusSearch = false) => {
+    // Visible feedback at the click point — previously this only set a
+    // message at the top of the page, so the button looked dead.
+    setSearchMessage(text);
+    if (focusSearch) {
+      const input = document.getElementById('my-bookings-lookup');
+      input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(() => input?.focus(), 350);
     }
-    if (!customerUser && !hasSearched) {
-      setSearchMessage('Please search with your mobile number or reference code first, then reschedule your appointment.');
-      return;
-    }
-    if (customerUser && !isBookingOwner(booking)) {
-      setSearchMessage('This booking belongs to a different customer. Please sign in with the phone number used for the booking to reschedule it.');
-      if (onRequireAuth) onRequireAuth({ action: 'view-price', targetView: 'my-bookings' });
-      else if (onOpenAuthModal) onOpenAuthModal();
-      return;
-    }
+    void Swal.fire({ icon: 'warning', title, text, confirmButtonColor: 'var(--sc-emerald-dark)' });
+  };
+
+  const openRescheduleModal = (booking: HennaBooking | JewelleryRental, kind: 'henna' | 'jewellery') => {
     const currentDate = kind === 'henna' ? (booking as HennaBooking).date : (booking as JewelleryRental).startDate;
     const currentSlot = kind === 'henna' ? (booking as HennaBooking).timeSlot : '';
     const slotIsCanonical = (APPOINTMENT_SLOTS as readonly string[]).includes(currentSlot);
@@ -311,6 +312,66 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     setRescheduleStatus('');
     setRescheduleTone('success');
     setRescheduleSummary('');
+  };
+
+  const handleOpenReschedule = async (booking: HennaBooking | JewelleryRental, kind: 'henna' | 'jewellery') => {
+    if (!isReschedulableStatus((booking as HennaBooking).status)) {
+      showRescheduleBlocked('Cannot Reschedule', 'This booking is already closed and cannot be rescheduled. Please contact the studio on WhatsApp.');
+      return;
+    }
+    if (customerUser && !isBookingOwner(booking)) {
+      showRescheduleBlocked('Not Your Booking', 'This booking belongs to a different customer. Please sign in with the phone number used for the booking to reschedule it.');
+      return;
+    }
+    // Guest who hasn't searched yet: ask for their number/ref right here,
+    // verify it finds this booking, then open the reschedule modal — no
+    // need to scroll up and search manually first. This check exists because
+    // the pre-search list shows every customer's bookings, so rescheduling
+    // without it would let anyone change anyone else's appointment.
+    if (!customerUser && !hasSearched) {
+      const bookingRef = (booking as HennaBooking).ref || (booking as JewelleryRental).ref || '';
+      const { value: query, isConfirmed } = await Swal.fire({
+        icon: 'question',
+        title: 'Verify to Reschedule',
+        text: 'Enter the mobile number or reference code used for this booking to continue.',
+        input: 'text',
+        inputPlaceholder: '10-digit mobile number or REF code',
+        inputAttributes: { autocomplete: 'off' },
+        showCancelButton: true,
+        confirmButtonText: 'Verify & Continue',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: 'var(--sc-emerald-dark)',
+        inputValidator: (v) => (!v || v.trim().length < 4 ? 'Please enter your mobile number or REF code.' : null),
+      });
+      if (!isConfirmed || !query) return;
+      const trimmed = String(query).trim();
+      setIsSearching(true);
+      try {
+        const combined = await fetchAllUserBookingsAndOrdersByPhone(trimmed);
+        const foundHenna = combined.hennaBookings.find((b) => b.ref === bookingRef);
+        const foundRental = combined.jewelleryRentals.find((r) => r.ref === bookingRef);
+        const foundBooking = foundHenna || foundRental;
+        if (!foundBooking) {
+          showRescheduleBlocked('Booking Not Found', `No booking found for "${trimmed}". Please check your mobile number or reference code and try again.`, true);
+          return;
+        }
+        // Verified — keep the searched list so the card updates in place.
+        setMobileInput(trimmed);
+        setSearchedQuery(trimmed);
+        setFetchedHennaBookings(combined.hennaBookings);
+        setFetchedJewelleryRentals(combined.jewelleryRentals);
+        setHasSearched(true);
+        setSearchMessage(`✓ Found ${combined.hennaBookings.length} Mehendi Appointment(s) and ${combined.jewelleryRentals.length} Jewellery Order(s) for ${trimmed}.`);
+        openRescheduleModal(foundBooking as any, kind);
+      } catch (err) {
+        console.error('Reschedule verification failed:', err);
+        showRescheduleBlocked('Verification Failed', 'Could not verify your booking. Please try again or WhatsApp the studio.');
+      } finally {
+        setIsSearching(false);
+      }
+      return;
+    }
+    openRescheduleModal(booking, kind);
   };
 
   const handleConfirmReschedule = async (e: React.FormEvent) => {
@@ -481,106 +542,169 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
   const getBookingStatus = (b: any): string => b.status || '';
   const getBookingClient = (b: any): string => b.clientName || b.clientName || '';
 
+  // Actual price of the selection (full service price), distinct from the
+  // amount actually paid shown in the Payment row (advance token vs full).
+  const getActualPrice = (b: any, isHenna: boolean): string => {
+    if (isHenna) {
+      if (b?.totalPrice) return b.totalPrice;
+      const fromName = String(b?.serviceName || '').match(/₹[\d,]+(?:\.\d+)?/g);
+      if (fromName && fromName.length > 0) return fromName[fromName.length - 1];
+      return b?.paymentAmount || '—';
+    }
+    return b?.totalAmount || b?.totalPrice || b?.dailyRate || '—';
+  };
+
+  // "Advance Paid ₹100" vs "Paid ₹2,000" vs "Pending" — from paymentStatus,
+  // with the paid amount appended so it's clear what was actually paid.
+  const getPaymentDisplay = (b: any): { label: string; tone: 'advance' | 'paid' | 'pending' | 'none' } => {
+    // Advance flag may only exist in the requests text on DB-fetched rows
+    // (payments ledger says PAID for both) — check it as a fallback.
+    const isAdvance = /advance paid/i.test(String(b?.paymentStatus || '')) || /advance paid/i.test(String(b?.specialRequests || ''));
+    const amountFromText = String(b?.specialRequests || '').match(/₹[\d,]+(?:\.\d+)?/)?.[0] || '';
+    const amount = b?.paymentAmount || b?.totalAmount || amountFromText || '';
+    if (isAdvance) return { label: `Advance Paid${amount ? ` • ${amount}` : ''}`, tone: 'advance' };
+    const raw = String(b?.paymentStatus || '').trim();
+    if (!raw) return { label: '—', tone: 'none' };
+    const s = raw.toLowerCase();
+    if (s.includes('paid') || s.includes('completed') || s.includes('captured') || s.includes('success') || s === 'confirmed')
+      return { label: `Paid${amount ? ` • ${amount}` : ''}`, tone: 'paid' };
+    if (s.includes('pending') || s.includes('processing')) return { label: `Pending${amount ? ` • ${amount}` : ''}`, tone: 'pending' };
+    return { label: raw, tone: 'pending' };
+  };
+
   return (
-    <div className="pt-20 pb-16 px-4 md:px-8 max-w-6xl mx-auto min-h-screen bg-[var(--sc-bg-soft)]">
+    <div className="pt-24 pb-20 px-4 md:px-8 max-w-6xl mx-auto min-h-screen bg-[var(--sc-bg-soft)]">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-serif text-3xl md:text-4xl font-bold text-[var(--sc-text)]">My Bookings</h1>
-        {customerUser && (
-          <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-[var(--sc-emerald)]/10 rounded-full border border-[var(--sc-emerald)]/30">
-            <span className="w-6 h-6 rounded-full bg-[var(--sc-emerald)] text-white flex items-center justify-center text-xs font-bold">
-              {(customerUser.name || '').slice(0, 2).toUpperCase()}
-            </span>
-            <span className="font-semibold text-[var(--sc-emerald-dark)]">{customerUser.name}</span>
+        <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--sc-emerald-dark)]">Shyam Creations</p>
+        <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-3xl md:text-4xl font-bold tracking-tight text-[var(--sc-text)]">My Bookings</h1>
+            <p className="mt-1.5 text-sm text-[var(--sc-text-dim)]">View your appointments & orders, reschedule, and track delivery.</p>
           </div>
-        )}
+          <div className="flex flex-wrap items-center gap-2">
+            {customerUser && (
+              <span className="inline-flex items-center gap-2 rounded-full border border-[var(--sc-border)] bg-[var(--sc-surface)] py-1.5 pl-1.5 pr-3 text-xs font-semibold text-[var(--sc-text)] shadow-xs">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--sc-emerald-deep)] text-[10px] font-bold text-[var(--sc-emerald-lux)]">
+                  {(customerUser.name || '').slice(0, 2).toUpperCase()}
+                </span>
+                {customerUser.name}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--sc-text-dim)]">
+              <span className="material-symbols-outlined text-sm leading-none">event_note</span>
+              {allHenna.length + allJewellery.length} total
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Search / Lookup */}
-      <div className="bg-[var(--sc-surface)] rounded-2xl p-6 border border-[var(--sc-border)] shadow-md mb-6">
-        <form onSubmit={handleFetchByMobile} className="flex flex-col sm:flex-row gap-3">
+      <section className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 shadow-xs mb-6">
+        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]" htmlFor="my-bookings-lookup">
+          Find your bookings
+        </label>
+        <form onSubmit={handleFetchByMobile} className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--sc-text-dimmer)]">
+              <span className="material-symbols-outlined text-sm leading-none">search</span>
+            </span>
             <input
+              id="my-bookings-lookup"
               type="text"
               value={mobileInput}
               onChange={(e) => setMobileInput(e.target.value)}
               placeholder={
                 customerUser
                   ? `Phone: ${customerUser.phone || customerUser.email}`
-                  : 'Enter 10-digit mobile number or REF code...'
+                  : 'Enter 10-digit mobile number or REF code'
               }
-              className="w-full px-4 py-3 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-sm focus:outline-none focus:border-[var(--sc-emerald)]"
+              className="w-full rounded-xl border border-[var(--sc-border)] bg-[var(--sc-accent-warm)] py-3 pl-10 pr-4 text-sm text-[var(--sc-text)] placeholder:text-[var(--sc-text-dimmer)] focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] focus:outline-none"
             />
           </div>
           <button
             type="submit"
             disabled={isSearching}
-            className="px-6 py-3 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald-light)] text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--sc-emerald-deep)] px-6 py-3 text-sm font-bold text-[var(--sc-emerald-lux)] transition-colors hover:bg-[var(--sc-emerald-dark)] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isSearching ? 'Searching...' : 'Find Bookings'}
+            <span className="material-symbols-outlined text-sm leading-none">{isSearching ? 'progress_activity' : 'search'}</span>
+            {isSearching ? 'Searching…' : 'Find Bookings'}
           </button>
           {customerUser && !isSearching && (
             <button
               type="button"
               onClick={() => handleClearLookup()}
-              className="px-4 py-3 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] rounded-xl text-sm font-bold transition-all"
+              className="rounded-xl border border-[var(--sc-border)] px-4 py-3 text-sm font-semibold text-[var(--sc-text-dim)] transition-colors hover:bg-[var(--sc-accent-warm)] hover:text-[var(--sc-text)]"
             >
               Clear
             </button>
           )}
         </form>
+        <p className="mt-2.5 text-[11px] text-[var(--sc-text-dimmer)]">Use the mobile number or reference (REF) from your booking confirmation.</p>
         {searchMessage && (
-          <p className={`mt-3 text-xs font-semibold ${
-            searchMessage.startsWith('✓') ? 'text-emerald-600' : 'text-amber-600'
+          <p role="status" className={`mt-3 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-xs font-semibold ${
+            searchMessage.startsWith('✓')
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-amber-200 bg-amber-50 text-amber-800'
           }`}>
-            {searchMessage}
+            <span className="material-symbols-outlined mt-0.5 text-sm leading-none">{searchMessage.startsWith('✓') ? 'check_circle' : 'info'}</span>
+            <span>{searchMessage}</span>
           </p>
         )}
-      </div>
+      </section>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 bg-[var(--sc-surface)] rounded-xl p-1.5 border border-[var(--sc-border)]">
-        <button
-          onClick={() => handleTabSwitch('all')}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
-            activeTab === 'all' ? 'bg-[var(--sc-emerald-dark)] text-white shadow' : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
-          }`}
-        >
-          All ({allHenna.length + allJewellery.length})
-        </button>
-        <button
-          onClick={() => handleTabSwitch('henna')}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
-            activeTab === 'henna' ? 'bg-[var(--sc-emerald-deep)] text-white shadow' : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
-          }`}
-        >
-          Mehendi ({allHenna.length})
-        </button>
-        <button
-          onClick={() => handleTabSwitch('jewellery')}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
-            activeTab === 'jewellery' ? 'bg-[var(--sc-emerald)] text-white shadow' : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
-          }`}
-        >
-          Jewellery ({allJewellery.length})
-        </button>
+      <div className="mb-6 flex gap-1.5 rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface)] p-1.5" role="tablist" aria-label="Filter bookings">
+        {([
+          { id: 'all' as const, label: 'All', icon: 'layers', count: allHenna.length + allJewellery.length },
+          { id: 'henna' as const, label: 'Mehendi', icon: 'palette', count: allHenna.length },
+          { id: 'jewellery' as const, label: 'Jewellery', icon: 'diamond', count: allJewellery.length },
+        ]).map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => handleTabSwitch(tab.id)}
+            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === tab.id
+                ? 'bg-[var(--sc-emerald-deep)] text-[var(--sc-emerald-lux)] shadow-xs'
+                : 'text-[var(--sc-text-dim)] hover:bg-[var(--sc-accent-warm)] hover:text-[var(--sc-text)]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm leading-none">{tab.icon}</span>
+            {tab.label}
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${activeTab === tab.id ? 'bg-white/15 text-inherit' : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)]'}`}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
       </div>
 
-      {/* Bookings List */}
-      <div className="space-y-4">
+      {/* Bookings List — square cards, necessary data only */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {displayedBookings.length === 0 ? (
-          <div className="bg-[var(--sc-surface)] rounded-2xl p-12 text-center border border-[var(--sc-border)]">
-            <div className="w-16 h-16 rounded-2xl bg-[var(--sc-accent-warm)] mx-auto flex items-center justify-center mb-4">
-              <span className="material-symbols-outlined text-3xl text-[var(--sc-text-dimmer)]">
-                {activeTab === 'henna' ? 'calendar_today' : activeTab === 'jewellery' ? 'diamond' : 'book'}
+          <div className="col-span-full rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-6 py-14 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--sc-accent-warm)]">
+              <span className="material-symbols-outlined text-2xl leading-none text-[var(--sc-text-dimmer)]">
+                {activeTab === 'henna' ? 'calendar_today' : activeTab === 'jewellery' ? 'diamond' : 'event_note'}
               </span>
             </div>
-            <h3 className="font-serif text-xl font-bold text-[var(--sc-text)] mb-2">
-              No {activeTab === 'all' ? 'bookings or orders' : activeTab === 'henna' ? 'mehendi appointments' : 'jewellery rentals'} found
+            <h3 className="font-serif text-xl font-bold text-[var(--sc-text)]">
+              No {activeTab === 'all' ? 'bookings or orders' : activeTab === 'henna' ? 'Mehendi appointments' : 'Jewellery rentals'} found
             </h3>
-            <p className="text-sm text-[var(--sc-text-dim)] max-w-md mx-auto">
-              Enter your mobile number or reference code to fetch your bookings from our database.
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[var(--sc-text-dim)]">
+              {hasSearched
+                ? 'We could not find anything for that number or reference. Check the details, or place a new booking.'
+                : 'Enter your mobile number or reference code above to fetch your bookings.'}
             </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <button onClick={() => onNavigate('henna-booking')} className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--sc-emerald-deep)] px-4 py-2.5 text-xs font-bold text-[var(--sc-emerald-lux)] transition-colors hover:bg-[var(--sc-emerald-dark)]">
+                <span className="material-symbols-outlined text-sm leading-none">palette</span> Book Mehendi
+              </button>
+              <button onClick={() => onNavigate('product')} className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--sc-border)] px-4 py-2.5 text-xs font-bold text-[var(--sc-text)] transition-colors hover:bg-[var(--sc-accent-warm)]">
+                <span className="material-symbols-outlined text-sm leading-none">diamond</span> Browse Jewellery
+              </button>
+            </div>
           </div>
         ) : (
           displayedBookings.map((booking) => {
@@ -592,137 +716,110 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
             const deliveryAddress = (booking as JewelleryRental).deliveryAddress;
             const trackingNumber = (booking as JewelleryRental).trackingNumber;
 
+            const badge = getDateBadgeParts(getBookingDate(booking));
+            const isPaid = paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed';
+            const canReschedule =
+              isReschedulableStatus(status) &&
+              !String((booking as JewelleryRental).productName || '').includes('(Express Dispatch)');
+            const rawTime = getBookingTime(booking) || '—';
+            const slotLabel = rawTime.includes('Morning') ? 'Morning Slot' : rawTime.includes('Evening') ? 'Evening Slot' : rawTime;
             return (
-              <div key={getBookingRef(booking)} className="bg-[var(--sc-surface)] rounded-2xl p-5 border border-[var(--sc-border)] hover:border-[var(--sc-emerald)]/40 transition-all cursor-pointer shadow-sm"
+              <article
+                key={getBookingRef(booking)}
                 onClick={() => setSelectedBooking(booking)}
+                className={`group flex h-full min-h-[260px] cursor-pointer flex-col rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 shadow-xs transition-all hover:-translate-y-0.5 hover:border-[var(--sc-emerald)]/50 hover:shadow-md ${isHenna ? 'border-t-4 border-t-[var(--sc-emerald-deep)]' : 'border-t-4 border-t-[#C08A34]'}`}
               >
-                <div className="flex items-center gap-4">
-                  {/* Date Badge */}
-                  <div className={`w-16 h-16 rounded-xl flex flex-col items-center justify-center font-serif shadow-md shrink-0 ${
-                    isHenna ? 'bg-[var(--sc-emerald-deep)] text-[var(--sc-emerald-lux)]' : 'bg-[#f3ebd9] text-[#3a4f3a]'
-                  }`}>
-                    <span className="text-[9px] uppercase font-bold tracking-wider">
-                      {getDateBadgeParts(getBookingDate(booking)).month}
-                    </span>
-                    <span className="text-xl font-bold leading-none">
-                      {getDateBadgeParts(getBookingDate(booking)).day}
-                    </span>
+                {/* Top row: date + status */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className={`flex w-14 shrink-0 flex-col items-center justify-center rounded-xl px-2 py-2.5 ${isHenna ? 'bg-[var(--sc-emerald-deep)] text-[var(--sc-emerald-lux)]' : 'border border-[#E8CE9B] bg-[#F7EEDD] text-[#6F4A18]'}`}>
+                    <span className="text-[9px] font-bold uppercase tracking-[0.2em]">{badge.month}</span>
+                    <span className="font-serif text-2xl font-bold leading-none">{badge.day}</span>
                   </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h3 className="font-serif text-lg font-bold text-[var(--sc-text)]">
-                          {getBookingName(booking)}
-                        </h3>
-                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                          {isHenna ? (
-                            <StatusBadge status={status} />
-                          ) : (
-                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                              paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-amber-50 text-amber-800 border-amber-200'
-                            }`}>
-                              {paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed' ? 'Paid' : 'Booked'}
-                            </span>
-                          )}
-                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                            isHenna ? 'bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] border-[var(--sc-emerald)]/20'
-                            : 'bg-amber-50 text-amber-800 border-amber-200'
-                          }`}>
-                            {isHenna ? 'Mehendi' : 'Jewellery'}
+                  {isHenna ? (
+                    paymentStatus ? (
+                      (() => {
+                        const p = getPaymentDisplay(booking);
+                        return (
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${p.tone === 'paid' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : p.tone === 'advance' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-[var(--sc-border)] bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)]'}`}>
+                            {p.tone === 'advance' ? 'Advance Paid' : p.tone === 'paid' ? 'Paid' : p.tone === 'pending' ? 'Pending' : p.label}
                           </span>
-                          <RefChip id={getBookingRef(booking)} />
-                        </div>
-
-                        {/* Additional Details for Mehendi */}
-                        {isHenna && (
-                          <div className="mt-2 space-y-1 text-xs text-[var(--sc-text-dim)]">
-                            <div className="flex items-center gap-4 flex-wrap">
-                              {booking.serviceCategory && (
-                                <span>Category: <span className="text-[var(--sc-text)] font-medium">{booking.serviceCategory}</span></span>
-                              )}
-                              {booking.paymentAmount && (
-                                <span>Amount: <span className="text-[var(--sc-text)] font-medium">{booking.paymentAmount}</span></span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4 flex-wrap">
-                              {getBookingDate(booking) && (
-                                <span>Date: <span className="text-[var(--sc-text)] font-medium">{formatDate(getBookingDate(booking))}</span></span>
-                              )}
-                              {getBookingTime(booking) && (
-                                <span>Slot: <span className="text-[var(--sc-text)] font-medium">{getBookingTime(booking)}</span></span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        {isHenna ? (
-                          <div className="text-right">
-                            {getBookingTime(booking) && (
-                              <p className="text-sm font-bold text-[var(--sc-emerald-dark)]">{getBookingTime(booking)}</p>
-                            )}
-                            {getBookingDate(booking) && (
-                              <p className="text-xs text-[var(--sc-text-dim)] mt-1">
-                                {formatDate(getBookingDate(booking))}
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <p className="text-sm font-bold text-[var(--sc-emerald-dark)]">{(booking as JewelleryRental).dailyRate || '---'}</p>
-                            {(paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed') && (
-                              <p className="text-xs text-[var(--sc-text-dim)] mt-1">
-                                {(booking as JewelleryRental).returnDue ? `Due: ${(booking as JewelleryRental).returnDue}` : ''}
-                              </p>
-                            )}
-                            {(trackingUrl || (trackingNumber && deliveryAddress)) && (
-                              <a
-                                href={trackingUrl || '#'}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-[10px] text-[var(--sc-emerald-dark)] hover:text-[var(--sc-emerald)] font-semibold flex items-center gap-1 justify-end"
-                              >
-                                <span>Track Shipment</span>
-                                <span className="material-symbols-outlined text-xs">launch</span>
-                              </a>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                        );
+                      })()
+                    ) : status ? (
+                      <span className="inline-flex items-center rounded-full border border-[var(--sc-border)] bg-[var(--sc-accent-warm)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--sc-text-dim)]">{status}</span>
+                    ) : null
+                  ) : (
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isPaid ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                      {String(paymentStatus || '').toLowerCase().includes('advance') ? 'Advance Paid' : isPaid ? 'Paid' : 'Booked'}
+                    </span>
+                  )}
                 </div>
 
-                {(isHenna || isReschedulableStatus(status)) && (
-                  <div className="mt-3 pt-3 border-t border-[var(--sc-border)]/50 flex flex-wrap gap-2 text-xs">
-                    {isReschedulableStatus(status) && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleOpenReschedule(booking as any, isHenna ? 'henna' : 'jewellery'); }}
-                        className="px-3 py-1.5 bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] rounded-lg font-semibold hover:bg-[var(--sc-emerald)]/20 transition-all"
-                      >
-                        {isHenna ? 'Reschedule Appointment' : 'Reschedule Rental'}
-                      </button>
-                    )}
+                {/* Necessary data only — fixed-height title keeps meta aligned */}
+                <h3 className="mt-3 line-clamp-2 min-h-[2.75rem] font-serif text-base font-bold leading-snug text-[var(--sc-text)]">{getBookingName(booking)}</h3>
+                <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-[var(--sc-text-dim)]">
+                  <span className="material-symbols-outlined text-[11px] leading-none">{isHenna ? 'palette' : 'diamond'}</span>
+                  {isHenna ? 'Mehendi' : 'Jewellery'}
+                  <span aria-hidden="true">·</span>
+                  <RefChip id={getBookingRef(booking)} />
+                </p>
+
+                {/* Aligned rows — values never truncate, full date always visible */}
+                <dl className="mt-3 space-y-2 border-t border-[var(--sc-border)]/70 pt-3 text-xs">
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">{isHenna ? 'Date' : 'Start'}</dt>
+                    <dd className="font-bold text-[var(--sc-text)]">{formatDate(getBookingDate(booking)) || '—'}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">{isHenna ? 'Slot' : 'Return'}</dt>
+                    <dd className="text-right font-semibold leading-snug text-[var(--sc-text)]">{slotLabel}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">Amount</dt>
+                    <dd className="font-bold text-[var(--sc-text)]">{getActualPrice(booking, isHenna)}</dd>
+                  </div>
+                </dl>
+
+                {/* Actions pinned to the bottom of the square card */}
+                <div className="mt-auto flex items-center gap-2 pt-4">
+                  {canReschedule && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleOpenReschedule(booking as any, isHenna ? 'henna' : 'jewellery'); }}
+                      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--sc-emerald-deep)] px-3 py-2.5 text-xs font-bold text-[var(--sc-emerald-lux)] transition-colors hover:bg-[var(--sc-emerald-dark)]"
+                    >
+                      <span className="material-symbols-outlined text-sm leading-none">calendar_month</span>
+                      Reschedule
+                    </button>
+                  )}
+                  {(trackingUrl || (trackingNumber && deliveryAddress)) && (
                     <a
-                      href={`https://wa.me/${STUDIO_INFO.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                        `Hi, I have a question about my booking ${getBookingRef(booking)}.`
-                      )}`}
+                      href={trackingUrl || '#'}
                       target="_blank"
                       rel="noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="px-3 py-1.5 bg-amber-50 text-amber-800 rounded-lg font-semibold hover:bg-amber-100 transition-all"
+                      title="Track Shipment"
+                      className="inline-flex items-center justify-center rounded-xl border border-[var(--sc-border)] px-3 py-2.5 text-xs font-semibold text-[var(--sc-text)] transition-colors hover:bg-[var(--sc-accent-warm)]"
                     >
-                      WhatsApp Support
+                      <span className="material-symbols-outlined text-sm leading-none">local_shipping</span>
                     </a>
-                  </div>
-                )}
-              </div>
+                  )}
+                  <a
+                    href={`https://wa.me/${STUDIO_INFO.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                      `Hi, I have a question about my booking ${getBookingRef(booking)}.`
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    title="WhatsApp Support"
+                    className="inline-flex items-center justify-center rounded-xl border border-[var(--sc-border)] px-3 py-2.5 text-xs font-semibold text-[var(--sc-text-dim)] transition-colors hover:bg-emerald-50 hover:text-emerald-800"
+                  >
+                    <span className="material-symbols-outlined text-sm leading-none">chat</span>
+                  </a>
+                  <span className={`flex items-center justify-center rounded-xl border border-[var(--sc-border)] px-3 py-2.5 text-[var(--sc-text-dimmer)] ${canReschedule ? '' : 'ml-auto'}`} title="View details">
+                    <span className="material-symbols-outlined text-sm leading-none">chevron_right</span>
+                  </span>
+                </div>
+              </article>
             );
           })
         )}
@@ -735,145 +832,113 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
         const paymentStatus = (booking as any).paymentStatus;
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-            <div className="bg-[var(--sc-surface)] rounded-3xl max-w-lg w-full p-6 border border-[var(--sc-border)] shadow-2xl animate-in zoom-in-95 duration-200">
-              <div className="flex justify-between items-start border-b border-[var(--sc-border)] pb-4 mb-4">
-                <div>
-                  <span className={`text-[10px] font-bold uppercase text-[var(--sc-emerald-dark)]`}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs" onClick={() => setSelectedBooking(null)}>
+            <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-[var(--sc-border)] bg-[var(--sc-surface)] p-6 shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-5 flex items-start justify-between gap-4 border-b border-[var(--sc-border)] pb-4">
+                <div className="min-w-0">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--sc-emerald-dark)]">
+                    <span className="material-symbols-outlined text-[11px] leading-none">{isHenna ? 'palette' : 'diamond'}</span>
                     {isHenna ? 'Mehendi Appointment' : 'Jewellery Rental / Order'}
                   </span>
-                  <h3 className="font-serif text-xl font-bold text-[var(--sc-text)] mt-1">
+                  <h3 className="mt-1.5 font-serif text-xl font-bold leading-snug text-[var(--sc-text)]">
                     {getBookingName(booking)}
                   </h3>
-                  <RefChip id={getBookingRef(booking)} />
+                  <div className="mt-2"><RefChip id={getBookingRef(booking)} /></div>
                 </div>
                 <button
                   onClick={() => setSelectedBooking(null)}
-                  className="p-1 hover:bg-[var(--sc-accent-warm)] rounded-full text-[var(--sc-text-dim)] transition-colors"
+                  aria-label="Close details"
+                  className="shrink-0 rounded-full border border-[var(--sc-border)] p-1.5 text-[var(--sc-text-dim)] transition-colors hover:bg-[var(--sc-accent-warm)] hover:text-[var(--sc-text)]"
                 >
-                  <span className="material-symbols-outlined">close</span>
+                  <span className="material-symbols-outlined block text-sm leading-none">close</span>
                 </button>
               </div>
 
-              <div className="space-y-4 text-sm">
-                <div>
-                  <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Reference Number</span>
-                  <RefChip id={getBookingRef(booking)} />
-                </div>
-
-                {isHenna && (
-                  <>
+              <div className="space-y-5 text-sm">
+                {/* Booking only */}
+                <section>
+                  <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--sc-emerald-dark)]">
+                    <span className="material-symbols-outlined text-sm leading-none">event_note</span> Booking
+                  </h4>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-bg-soft)] p-4">
                     <div>
-                      <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Chosen Category</span>
-                      <span className="text-[var(--sc-text)]">{(booking as HennaBooking).serviceCategory || 'Mehendi Service'}</span>
-                    </div>
-                    {booking.paymentAmount && (
-                      <div>
-                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Amount</span>
-                        <span className="text-[var(--sc-emerald-dark)] font-bold">{booking.paymentAmount}</span>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                <div>
-                  <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Date</span>
-                  <span className="font-bold text-[var(--sc-text)]">
-                    {formatDate(getBookingDate(booking))}
-                  </span>
-                </div>
-
-                {getBookingTime(booking) && (
-                  <div>
-                    <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Time Slot</span>
-                    <span className="font-bold text-[var(--sc-text)]">{getBookingTime(booking)}</span>
-                  </div>
-                )}
-
-                <div>
-                  <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Status</span>
-                  <StatusBadge status={getBookingStatus(booking)} className="text-xs px-3 py-1" />
-                </div>
-
-                {isHenna ? (
-                  <>
-                    <div>
-                      <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Location</span>
-                      <span className="text-[var(--sc-text)]">{(booking as HennaBooking).location || 'Studio / Client Venue'}</span>
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">Reference</dt>
+                      <dd className="mt-1"><RefChip id={getBookingRef(booking)} /></dd>
                     </div>
                     <div>
-                      <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Client</span>
-                      <span className="text-[var(--sc-text)]">
-                        {(booking as HennaBooking).clientName} ({getBookingRef(booking)})
-                      </span>
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">Status</dt>
+                      <dd className="mt-1 font-semibold text-[var(--sc-text)]">{getBookingStatus(booking) || '—'}</dd>
                     </div>
-                    {booking.specialRequests && (
-                      <div>
-                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Special Requests</span>
-                        <p className="text-[var(--sc-text-dim)] italic">"{booking.specialRequests}"</p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
                     <div>
-                      <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Rate</span>
-                      <span className="font-bold text-[var(--sc-emerald-dark)]">{(booking as JewelleryRental).dailyRate}</span>
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">{isHenna ? 'Date' : 'Start Date'}</dt>
+                      <dd className="mt-1 font-semibold text-[var(--sc-text)]">{formatDate(getBookingDate(booking)) || '—'}</dd>
                     </div>
-                    {(booking as JewelleryRental).depositAmount && (booking as JewelleryRental).depositAmount !== '₹0' && (
+                    {getBookingTime(booking) && (
                       <div>
-                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">
-                          {(booking as JewelleryRental).status === 'Returned'
-                            ? 'Security Deposit (refunded after safe return)'
-                            : 'Security Deposit (refundable after safe return)'}
-                        </span>
-                        <span className="font-bold text-[var(--sc-emerald-dark)]">{(booking as JewelleryRental).depositAmount}</span>
+                        <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">{isHenna ? 'Time Slot' : 'Return Due'}</dt>
+                        <dd className="mt-1 font-semibold text-[var(--sc-text)]">{formatDate(getBookingTime(booking)) === getBookingTime(booking) ? getBookingTime(booking) : formatDate(getBookingTime(booking))}</dd>
                       </div>
                     )}
-                    {booking.returnDue && (
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">Amount</dt>
+                      <dd className="mt-1 font-semibold text-[var(--sc-text)]">{getActualPrice(booking, isHenna)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">Payment</dt>
+                      <dd className="mt-1">
+                        {(() => {
+                          const p = getPaymentDisplay(booking);
+                          return (
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                              p.tone === 'paid' ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                              : p.tone === 'advance' ? 'border-amber-200 bg-amber-50 text-amber-800'
+                              : 'border-[var(--sc-border)] bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)]'
+                            }`}>
+                              <span className="material-symbols-outlined text-[11px] leading-none">{p.tone === 'paid' ? 'check_circle' : p.tone === 'advance' ? 'schedule' : 'info'}</span>
+                              {p.label}
+                            </span>
+                          );
+                        })()}
+                      </dd>
+                    </div>
+                    {!isHenna && (booking as JewelleryRental).depositAmount && (booking as JewelleryRental).depositAmount !== '₹0' && (
                       <div>
-                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Return Due</span>
-                        <span className="text-[var(--sc-text)]">{booking.returnDue}</span>
+                        <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">
+                          {(booking as JewelleryRental).status === 'Returned' ? 'Deposit (refunded)' : 'Deposit (refundable)'}
+                        </dt>
+                        <dd className="mt-1 font-bold text-[var(--sc-emerald-dark)]">{(booking as JewelleryRental).depositAmount}</dd>
                       </div>
                     )}
-                    {(booking as JewelleryRental).deliveryAddress && (paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed') && (
-                      <div>
-                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Delivery Address</span>
-                        <span className="text-[var(--sc-text)]">{(booking as JewelleryRental).deliveryAddress}</span>
-                      </div>
-                    )}
-                    {(booking as JewelleryRental).trackingUrl && (
-                      <div>
-                        <span className="text-xs font-bold text-[var(--sc-text-dimmer)] block mb-1">Track Shipment</span>
-                        <a
-                          href={(booking as JewelleryRental).trackingUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[var(--sc-emerald-dark)] font-semibold flex items-center gap-1"
-                        >
-                          <span>{(booking as JewelleryRental).trackingNumber || (booking as JewelleryRental).trackingUrl}</span>
-                          <span className="material-symbols-outlined text-xs">launch</span>
-                        </a>
-                      </div>
-                    )}
-                  </>
-                )}
+                  </dl>
+                </section>
 
-                <div className="border-t border-[var(--sc-border)] pt-4 flex justify-end gap-2">
+                {/* Address only — just the address text */}
+                <section>
+                  <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--sc-emerald-dark)]">
+                    <span className="material-symbols-outlined text-sm leading-none">location_on</span> Address
+                  </h4>
+                  <p className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-bg-soft)] p-4 font-semibold leading-relaxed text-[var(--sc-text)]">
+                    {isHenna
+                      ? ((booking as HennaBooking).deliveryAddress || (booking as HennaBooking).location || 'Studio / Client Venue')
+                      : ((booking as JewelleryRental).deliveryAddress || 'Studio Pickup')}
+                  </p>
+                </section>
+
+                <div className="flex justify-end gap-2 border-t border-[var(--sc-border)] pt-4">
                   <button
                     onClick={() => setSelectedBooking(null)}
-                    className="px-4 py-2 bg-[var(--sc-accent-warm)] text-[var(--sc-text)] rounded-xl font-bold text-sm"
+                    className="rounded-xl border border-[var(--sc-border)] px-4 py-2.5 text-sm font-semibold text-[var(--sc-text)] transition-colors hover:bg-[var(--sc-accent-warm)]"
                   >
                     Close
                   </button>
-                  {!isHenna && (
+                  {(
                     <a
                       href={`https://wa.me/${STUDIO_INFO.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
                         `Hello, I have a query about my ${getBookingName(booking)} (REF: ${getBookingRef(booking)}).`
                       )}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 bg-[var(--sc-emerald)] text-white rounded-xl font-bold text-sm"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--sc-emerald-deep)] px-4 py-2.5 text-sm font-bold text-[var(--sc-emerald-lux)] transition-colors hover:bg-[var(--sc-emerald-dark)]"
                     >
                       WhatsApp Support
                     </a>

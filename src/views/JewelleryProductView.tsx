@@ -188,7 +188,7 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     const isRental = checkoutProduct.type === 'Rental';
     const shippingFeeNum = calcShippingFeeForProduct(deliveryState, deliveryPincode);
 
-    // Rental: charge per-day rent for the chosen days + 30% of the original
+    // Rental: charge per-day rent for the chosen days + 40% of the original
     // jewellery price as a refundable security deposit.
     // e.g. original ₹2,000, rent ₹600/day × 3 days
     //   → rental ₹1,800 + deposit ₹600 = ₹2,400 (+ shipping)
@@ -217,7 +217,7 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     const formattedTotal = `₹${totalAmountNum.toLocaleString('en-IN')}`;
     const formattedDeposit = formatINR(securityDepositNum);
     // Customer-facing breakdown — never shows the original amount (it is
-    // only used internally to calculate the 30% deposit).
+    // only used internally to calculate the 40% deposit).
     const rentalBreakdown = rental
       ? `Rental ${formatINR(rental.rentalPerDayPerPiece)}/day × ${rental.days} days = ${formatINR(rental.rentalTotal)} | Security deposit ${formattedDeposit} (refundable after safe return)`
       : '';
@@ -266,7 +266,7 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         shippingFee: formattedShipping,
         specialRequests: `${rentalBreakdown ? rentalBreakdown + ' | ' : ''}${SECURITY_DEPOSIT_NOTE} Item: ${checkoutProduct.name} | Qty: ${qty} | Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}`,
         status: 'Confirmed', type: 'jewellery', paymentStatus: 'Paid',
-        paymentAmount: formattedTotal, paymentMethod: 'Razorpay (Online Payment)',
+        paymentAmount: formattedTotal, totalPrice: formattedTotal, paymentMethod: 'Razorpay (Online Payment)',
         transactionId: verifiedTxnId,
       };
 

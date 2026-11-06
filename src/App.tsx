@@ -28,6 +28,7 @@ import { WishlistDrawer } from './components/WishlistDrawer';
 import { CartCheckoutModal } from './components/CartCheckoutModal';
 import {
   fetchSupabaseBookings,
+  fetchSupabaseDisabledSlots,
   fetchSupabaseJewellery,
   insertSupabaseBooking,
   updateSupabaseBookingStatus,
@@ -259,6 +260,25 @@ export function App() {
         const dbJewellery = await fetchSupabaseJewellery();
         if (dbJewellery && dbJewellery.length > 0) {
           setProducts(dbJewellery);
+        }
+
+        // Disabled slots from DB — previously only localStorage was loaded,
+        // so reschedule/booking slot checks missed studio-disabled slots
+        // set on another device. Merge DB rows (dedup by date+slot).
+        try {
+          const dbSlots = await fetchSupabaseDisabledSlots();
+          const mapped: DisabledSlot[] = (dbSlots || [])
+            .filter((s: any) => s?.date && s?.slot)
+            .map((s: any) => ({ date: s.date, timeSlot: s.slot, reason: s.status && s.status !== 'disabled' ? s.status : undefined }));
+          if (mapped.length > 0) {
+            setDisabledSlots((prev) => {
+              const seen = new Set(prev.map((s) => `${s.date}|${s.timeSlot}`));
+              const fresh = mapped.filter((s) => !seen.has(`${s.date}|${s.timeSlot}`));
+              return [...prev, ...fresh];
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to load disabled slots from DB:', e);
         }
       }
     }

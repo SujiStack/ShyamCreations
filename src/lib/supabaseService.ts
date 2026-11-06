@@ -330,6 +330,39 @@ export async function testSupabaseConnection(): Promise<SupabaseDiagnosticResult
 }
 
 /**
+ * The `bookings.notes` column historically stores
+ * `${location}. ${specialRequests}` in a single blob (specialRequests itself
+ * contains Occasion/Duration and the [Payment Info] block), so reading the
+ * whole column as the address shows payment/occasion text in "Address".
+ * Extract just the location part. New rows use a `Location: … | …` format.
+ */
+export function parseBookingNotes(notes?: string | null): { location: string; requests: string } {
+  const FALLBACK_LOCATION = 'Studio / Client Venue';
+  const raw = String(notes || '').trim();
+  if (!raw) return { location: FALLBACK_LOCATION, requests: '' };
+
+  // New structured format: "Location: <addr> | <requests>"
+  if (/^Location:/i.test(raw)) {
+    const rest = raw.replace(/^Location:\s*/i, '');
+    const sep = rest.indexOf(' | ');
+    if (sep >= 0) {
+      return { location: rest.slice(0, sep).trim() || FALLBACK_LOCATION, requests: rest.slice(sep + 3).trim() };
+    }
+    return { location: rest.trim() || FALLBACK_LOCATION, requests: '' };
+  }
+
+  // Legacy format: "<location>. <occasion/duration/payment info>"
+  const dotSep = raw.indexOf('. ');
+  if (dotSep > 0) {
+    const location = raw.slice(0, dotSep).trim().replace(/\.$/, '');
+    const requests = raw.slice(dotSep + 2).trim();
+    if (location) return { location, requests };
+  }
+
+  return { location: raw.replace(/\.$/, '').trim() || FALLBACK_LOCATION, requests: '' };
+}
+
+/**
  * Fetch all bookings from Supabase 'bookings' table
  */
 export async function fetchSupabaseBookings(): Promise<HennaBooking[] | null> {
@@ -348,22 +381,35 @@ export async function fetchSupabaseBookings(): Promise<HennaBooking[] | null> {
 
     if (!data) return [];
 
-    return data.map((row: DBBookingRow) => ({
-      id: row.id || `hb-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      ref: row.ref || `HB-${Math.floor(100 + Math.random() * 900)}`,
-      serviceName: row.service || 'Bridal Henna Artistry',
-      date: row.date || '2026-08-08',
-      timeSlot: row.slot || '10:00 AM',
-      location: row.notes || 'Jaipur Venue',
-      clientName: row.name || 'Client',
-      clientEmail: row.email || 'client@example.com',
-      phone: row.phone || '',
-      wa: row.wa || '',
-      specialRequests: row.notes || '',
-      artist: row.occasion ? `Specialist (${row.occasion})` : 'Senior Specialist',
-      status: (row.status as any) || 'Confirmed',
-      type: 'henna',
-    }));
+    // Merge payment info (status + amount actually paid) so Advance Paid vs
+    // Paid is correct on first load, not only after a phone search.
+    const paymentInfoMap = await fetchPaymentInfoByRefs(data.map((r: any) => r.ref));
+
+    return data.map((row: DBBookingRow) => {
+      const parsed = parseBookingNotes(row.notes);
+      const payInfo = paymentInfoMap.get((row.ref || '').toUpperCase());
+      return {
+        id: row.id || `hb-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        ref: row.ref || `HB-${Math.floor(100 + Math.random() * 900)}`,
+        serviceName: row.service || 'Bridal Henna Artistry',
+        date: row.date || '2026-08-08',
+        timeSlot: row.slot || '10:00 AM',
+        location: parsed.location,
+        clientName: row.name || 'Client',
+        clientEmail: row.email || 'client@example.com',
+        phone: row.phone || '',
+        wa: row.wa || '',
+        specialRequests: parsed.requests,
+        artist: row.occasion ? `Specialist (${row.occasion})` : 'Senior Specialist',
+        status: (row.status as any) || 'Confirmed',
+        type: 'henna' as const,
+        paymentStatus: isAdvancePaymentText(parsed.requests) ? 'Advance Paid' : payInfo?.status || undefined,
+        paymentAmount: payInfo?.amount || extractPaidAmountFromRequests(parsed.requests) || undefined,
+        totalPrice: extractServicePrice(row.service) || payInfo?.amount || undefined,
+        paymentMethod: payInfo?.method || undefined,
+        transactionId: payInfo?.paymentId || undefined,
+      };
+    });
   } catch (err) {
     console.warn('Supabase bookings query failed:', err);
     return null;
@@ -391,7 +437,12 @@ export async function insertSupabaseBooking(
       wa: booking.wa || extra?.wa || '',
       service: booking.serviceName,
       occasion: extra?.occasion || 'Bridal Ceremony',
-      notes: `${booking.location || ''}. ${booking.specialRequests || ''}`.trim(),
+      // Structured so the address can be read back cleanly — see
+      // parseBookingNotes(). The old `${location}. ${requests}` blob leaked
+      // occasion/payment text into the Address field.
+      notes: booking.specialRequests
+        ? `Location: ${booking.location || ''} | ${booking.specialRequests}`
+        : `Location: ${booking.location || ''}`,
       date: booking.date,
       slot: booking.timeSlot || '10:00 AM',
       status: booking.status || 'Confirmed',
@@ -585,23 +636,25 @@ export async function fetchBookingByRefOrPhone(searchQuery: string): Promise<Hen
 
     if (error || !data) return null;
 
-    return data.map((row: DBBookingRow) => ({
-      id: row.id || `hb-${Date.now()}`,
-      ref: row.ref || `SC-${Math.floor(100 + Math.random() * 900)}`,
-      serviceName: row.service || 'Service Appointment',
-      date: row.date || '',
-      timeSlot: row.slot || '',
-      location: row.notes || 'Studio / Home',
-      clientName: row.name || 'Client',
-      clientEmail: row.email || '',
-      phone: row.phone || '',
-      wa: row.wa || '',
-      specialRequests: row.notes || '',
-      status: (row.status as any) || 'Confirmed',
-      type: row.service?.toLowerCase().includes('jewel')
-        ? 'jewellery'
-        : 'henna',
-    }));
+    return data.map((row: DBBookingRow) => {
+      const parsed = parseBookingNotes(row.notes);
+      return {
+        id: row.id || `hb-${Date.now()}`,
+        ref: row.ref || `SC-${Math.floor(100 + Math.random() * 900)}`,
+        serviceName: row.service || 'Service Appointment',
+        date: row.date || '',
+        timeSlot: row.slot || '',
+        location: parsed.location,
+        clientName: row.name || 'Client',
+        clientEmail: row.email || '',
+        phone: row.phone || '',
+        wa: row.wa || '',
+        specialRequests: parsed.requests,
+        status: (row.status as any) || 'Confirmed',
+        type: (row.service?.toLowerCase().includes('jewel') ? 'jewellery' : 'henna') as 'henna' | 'jewellery',
+        totalPrice: extractServicePrice(row.service) || undefined,
+      };
+    });
   } catch (err) {
     console.error('Fetch booking by ref/phone failed:', err);
     return null;
@@ -1538,14 +1591,39 @@ export function getPaymentDisplayLabel(status?: string): 'Paid' | 'Pending' | 'F
   return 'Pending';
 }
 
+/** True when the booking was paid as an advance (token) payment, not in full.
+ *  The advance flag lives in the booking's requests text ("Status: Advance
+ *  Paid…") — the `payments` table only records PAID for both cases. */
+export function isAdvancePaymentText(text?: string | null): boolean {
+  return /advance paid/i.test(String(text || ''));
+}
+
+/** Amount actually paid, recovered from the requests text when the
+ *  `payments` ledger has no row (e.g. test-mode/simulated payments). */
+export function extractPaidAmountFromRequests(text?: string | null): string {
+  const m = String(text || '').match(/₹[\d,]+(?:\.\d+)?/);
+  return m ? m[0] : '';
+}
+
+/** Actual price of the selected service, embedded in the service name at
+ *  booking time as "Mehendi: Minimal Design (₹200)". The advance token
+ *  actually paid is stored separately (paymentAmount) — this is the full
+ *  price that belongs in the "Amount" field. */
+export function extractServicePrice(serviceName?: string | null): string {
+  const matches = String(serviceName || '').match(/₹[\d,]+(?:\.\d+)?/g);
+  return matches && matches.length > 0 ? matches[matches.length - 1] : '';
+}
+
 /**
  * Fetch payment records for a list of booking refs (idempotent, safe with empty list).
- * Returns a map: booking_ref (uppercase) -> { status, method, paymentId }
+ * Returns a map: booking_ref (uppercase) -> { status, method, paymentId, amount }
+ * `amount` is what was actually paid (token amount for advance payments,
+ * full amount for full payments) from the `payments` ledger.
  */
 export async function fetchPaymentInfoByRefs(
   refs: string[]
-): Promise<Map<string, { status: string; method: string; paymentId: string }>> {
-  const map = new Map<string, { status: string; method: string; paymentId: string }>();
+): Promise<Map<string, { status: string; method: string; paymentId: string; amount: string }>> {
+  const map = new Map<string, { status: string; method: string; paymentId: string; amount: string }>();
   const uniqueRefs = Array.from(new Set((refs || []).filter(Boolean)));
   if (uniqueRefs.length === 0) return map;
 
@@ -1553,7 +1631,7 @@ export async function fetchPaymentInfoByRefs(
     if (!isSupabaseConfigured()) return map;
     const { data } = await supabase
       .from('payments')
-      .select('booking_ref, payment_status, payment_method, razorpay_payment_id')
+      .select('booking_ref, payment_status, payment_method, razorpay_payment_id, amount')
       .in('booking_ref', uniqueRefs);
 
     if (Array.isArray(data)) {
@@ -1561,10 +1639,12 @@ export async function fetchPaymentInfoByRefs(
         const key = String(row.booking_ref || '').toUpperCase();
         if (!key) continue;
         // Prefer the most recent record per ref (latest by created order in response)
+        const amt = Number(row.amount);
         map.set(key, {
           status: String(row.payment_status || ''),
           method: String(row.payment_method || ''),
           paymentId: String(row.razorpay_payment_id || ''),
+          amount: Number.isFinite(amt) && amt > 0 ? `₹${amt.toLocaleString('en-IN')}` : '',
         });
       }
     }
@@ -1611,21 +1691,29 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
     if (bookingsData && bookingsData.length > 0) {
       result.hennaBookings = bookingsData.map((row: DBBookingRow) => {
         const payInfo = paymentInfoMap.get((row.ref || '').toUpperCase());
+        const parsed = parseBookingNotes(row.notes);
         return {
           id: row.id || `hb-${Date.now()}`,
           ref: row.ref || `SC-${Math.floor(100 + Math.random() * 900)}`,
           serviceName: row.service || 'Mehendi Appointment',
           date: row.date || new Date().toISOString().split('T')[0],
           timeSlot: row.slot || '10:00 AM',
-          location: row.notes || 'Studio Pickup / Client Location',
+          location: parsed.location,
           clientName: row.name || 'Client',
           clientEmail: row.email || '',
           phone: row.phone || '',
           wa: row.wa || '',
-          specialRequests: row.notes || '',
+          specialRequests: parsed.requests,
           status: (row.status as any) || 'Confirmed',
           type: row.service?.toLowerCase().includes('jewel') ? 'jewellery' : 'henna',
-          paymentStatus: payInfo?.status || undefined,
+          // Advance flag only exists in the requests text — the payments
+          // ledger says PAID for both advance and full payments, so restore
+          // "Advance Paid" here or DB-fetched bookings lose it.
+          paymentStatus: isAdvancePaymentText(parsed.requests)
+            ? 'Advance Paid'
+            : payInfo?.status || undefined,
+          paymentAmount: payInfo?.amount || extractPaidAmountFromRequests(parsed.requests) || undefined,
+          totalPrice: extractServicePrice(row.service) || payInfo?.amount || undefined,
           paymentMethod: payInfo?.method || undefined,
           transactionId: payInfo?.paymentId || undefined,
         };
@@ -1672,6 +1760,9 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         id: jb.id || jb.bookingRef,
         productName: jb.productName,
         ref: jb.bookingRef,
+        clientName: jb.clientName,
+        phone: jb.phone,
+        email: jb.email,
         image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&q=80&w=600',
         startDate: jb.startDate,
         returnDue: jb.endDate || jb.startDate,
@@ -1724,6 +1815,9 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         id: jc.id || jc.orderRef,
         productName: `${jc.productName} (Express Dispatch)`,
         ref: jc.orderRef,
+        clientName: jc.customerName,
+        phone: jc.phone,
+        email: jc.email,
         image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&q=80&w=600',
         startDate: new Date(jc.created_at || Date.now()).toISOString().split('T')[0],
         returnDue: jc.deliveryAddress || 'Courier Dispatch',

@@ -81,7 +81,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   if (!isOpen && !confirmedReceipt) return null;
 
   // Sale items: full price. Rental items: per-day rent × rentalDays, plus
-  // 30% of the original price as a refundable security deposit.
+  // 40% of the original price as a refundable security deposit.
   const hasRentalItems = cartItems.some((i) => i.product.type === 'Rental');
   const saleSubtotal = cartItems
     .filter((i) => i.product.type !== 'Rental')
@@ -258,7 +258,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         status: 'Confirmed',
         type: 'jewellery',
         paymentStatus: 'Paid',
-        paymentAmount: formattedTotal,
+        paymentAmount: formattedTotal, totalPrice: formattedTotal,
         paymentMethod: 'Razorpay (Online Payment)',
         transactionId: verifiedTxnId,
       };

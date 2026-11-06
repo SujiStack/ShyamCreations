@@ -5,7 +5,7 @@ import { calcMixedBag, formatINR, parsePriceAmount } from '../lib/rentalCalc';
 // The bag has no rental-period picker (that happens at checkout), so the
 // drawer previews rent using the same default as checkout: 3 days.
 // Rental items are priced at their per-day rent — never the original
-// jewellery price, which is only used internally for the 30% deposit.
+// jewellery price, which is only used internally for the 40% deposit.
 const PREVIEW_RENTAL_DAYS = 3;
 
 interface CartDrawerProps {

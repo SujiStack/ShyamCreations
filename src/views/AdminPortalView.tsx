@@ -15,6 +15,8 @@ import {
   JEWELLERY_BOOKINGS_TABLE_SQL,
   fetchSupabaseBookings,
   fetchSupabaseJewellery,
+  addSupabaseDisabledSlot,
+  deleteSupabaseDisabledSlot,
   testSupabaseConnection,
   SupabaseDiagnosticResult,
 } from '../lib/supabaseService';
@@ -1221,6 +1223,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                             className="bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] text-[10px] text-white p-1 rounded"
                           >
                             <option value="Confirmed">Confirmed</option>
+                            <option value="Rescheduled">Rescheduled</option>
                             <option value="Completed">Completed</option>
                             <option value="Cancelled">Cancelled</option>
                           </select>
@@ -1822,6 +1825,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       const updated = [...dbDisabledSlots, newSlot];
                       setDbDisabledSlots(updated);
                       onUpdateDisabledSlots?.(updated);
+                      // Persist to DB too, so other devices' booking and
+                      // reschedule slot checks see this disabled slot.
+                      void addSupabaseDisabledSlot(newSlotDate, newSlotTime, newSlotReason || 'disabled');
                       setNewSlotDate('');
                       setNewSlotTime('Morning Slot (09:00 AM - 01:00 PM)');
                       setNewSlotReason('');
@@ -1880,9 +1886,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           <td className="p-3.5 text-right">
                             <button
                               onClick={() => {
+                                const removed = dbDisabledSlots[idx];
                                 const updated = dbDisabledSlots.filter((_, i) => i !== idx);
                                 setDbDisabledSlots(updated);
                                 onUpdateDisabledSlots?.(updated);
+                                if (removed) {
+                                  void deleteSupabaseDisabledSlot(removed.date, removed.timeSlot);
+                                }
                               }}
                               className="p-1.5 hover:bg-green-500/20 text-green-400 rounded transition-colors"
                               title="Enable Slot (Remove from disabled list)"

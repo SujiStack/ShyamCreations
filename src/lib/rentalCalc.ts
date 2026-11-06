@@ -1,14 +1,14 @@
 // =============================================================
-// Jewellery rental calculation with 30% refundable security deposit
+// Jewellery rental calculation with 40% refundable security deposit
 //
 // Example: original jewellery price ₹2,000, rental ₹600/day, 3 days
 //   Rental total        = 600 × 3          = ₹1,800
-//   Security deposit    = 30% of 2,000     = ₹600  (refundable after
+//   Security deposit    = 40% of 2,000     = ₹800  (refundable after
 //                                                     safe return of product)
-//   Payable (excl. ship)= 1,800 + 600      = ₹2,400
+//   Payable (excl. ship)= 1,800 + 800      = ₹2,600
 // =============================================================
 
-export const SECURITY_DEPOSIT_RATE = 0.3;
+export const SECURITY_DEPOSIT_RATE = 0.4;
 
 /** Parse "₹2,000", "₹600/day", "2000" → 2000 (0 when unparseable). */
 export function parsePriceAmount(value?: string | number | null): number {
@@ -32,7 +32,7 @@ export interface RentalCalculation {
   originalTotal: number;
   /** rentalPerDay × days × qty */
   rentalTotal: number;
-  /** 30% of originalTotal — refundable after safe return. */
+  /** 40% of originalTotal — refundable after safe return. */
   securityDeposit: number;
   /** rentalTotal + securityDeposit (before shipping) */
   rentalPlusDeposit: number;
@@ -66,7 +66,7 @@ export function calcRental(input: {
 /**
  * Mixed bag (sale + rental items) totals.
  * Sale items contribute their full price; rental items contribute
- * rental-per-day × days × qty plus the 30% deposit.
+ * rental-per-day × days × qty plus the 40% deposit.
  */
 export function calcMixedBag(input: {
   saleSubtotal: number;

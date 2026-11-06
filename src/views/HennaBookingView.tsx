@@ -328,6 +328,7 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
         type: selectedCategory === 'mehendi' ? 'henna' : 'jewellery',
         paymentStatus: paymentOption === 'advance' ? 'Advance Paid' : 'Paid',
         paymentAmount: payAmtStr,
+        totalPrice: servicePriceVal,
         paymentMethod: payMethodStr,
         transactionId: verifiedTxnId,
       };
