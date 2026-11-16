@@ -1,59 +1,34 @@
-// import { createClient } from "@supabase/supabase-js";
-
-// const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-// const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-
-// export const supabase = createClient(
-//   supabaseUrl || "https://placeholder-url.supabase.co",
-//   supabaseKey || "placeholder-anon-key"
-// );
-
-
-
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Retrieve and sanitize Supabase credentials from environment or localStorage override
+ * Supabase credentials come ONLY from environment variables (.env locally,
+ * hosting env vars in production). No localStorage overrides — the admin
+ * portal always reads from these.
  */
 export function getSupabaseCredentials() {
-  const envUrl = (import.meta.env.VITE_SUPABASE_URL || "").trim();
-  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
+  const rawUrl = (import.meta.env.VITE_SUPABASE_URL || "").trim();
+  const rawKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
 
-  let customUrl = "";
-  let customKey = "";
-  if (typeof window !== "undefined") {
-    try {
-      customUrl = (localStorage.getItem("shyam_custom_supabase_url") || "").trim();
-      customKey = (localStorage.getItem("shyam_custom_supabase_key") || "").trim();
-    } catch {
-      // ignore
-    }
+  let url = rawUrl;
+  if (url && !url.startsWith("http://") && !url.startsWith("https://")) {
+    url = `https://${url}`;
   }
-
-  let rawUrl = customUrl || envUrl;
-  let rawKey = customKey || envKey;
-
-  // Clean URL: ensure https:// and strip trailing slashes
-  if (rawUrl && !rawUrl.startsWith("http://") && !rawUrl.startsWith("https://")) {
-    rawUrl = `https://${rawUrl}`;
-  }
-  rawUrl = rawUrl.replace(/\/+$/, "");
+  url = url.replace(/\/+$/, "");
 
   const isConfigured = Boolean(
-    rawUrl &&
+    url &&
     rawKey &&
-    rawUrl !== "https://placeholder-url.supabase.co" &&
+    url !== "https://placeholder-url.supabase.co" &&
     rawKey !== "placeholder-anon-key" &&
-    rawUrl.includes("supabase.co")
+    url.includes("supabase.co")
   );
 
   return {
-    url: rawUrl || "https://placeholder-url.supabase.co",
+    url: url || "https://placeholder-url.supabase.co",
     key: rawKey || "placeholder-anon-key",
-    rawUrl,
+    rawUrl: url,
     rawKey,
     isConfigured,
-    isCustom: Boolean(customUrl && customKey),
   };
 }
 
@@ -62,7 +37,7 @@ let lastUsedUrl = "";
 let lastUsedKey = "";
 
 /**
- * Get active Supabase client instance (recreates if credentials changed)
+ * Get the active Supabase client instance (created once per credentials set)
  */
 export function getSupabaseClient(): SupabaseClient {
   const creds = getSupabaseCredentials();
@@ -72,49 +47,13 @@ export function getSupabaseClient(): SupabaseClient {
     lastUsedKey = creds.key;
     currentClient = createClient(creds.url, creds.key, {
       auth: {
-        persistSession: true,
+        persistSession: true, // managed by Supabase Auth SDK, not app code
         autoRefreshToken: true,
       },
     });
   }
 
   return currentClient;
-}
-
-/**
- * Save custom Supabase credentials to localStorage and re-initialize client
- */
-export function saveCustomSupabaseCredentials(url: string, key: string): { success: boolean; error?: string } {
-  try {
-    let cleanUrl = url.trim();
-    let cleanKey = key.trim();
-
-    if (!cleanUrl || !cleanKey) {
-      localStorage.removeItem("shyam_custom_supabase_url");
-      localStorage.removeItem("shyam_custom_supabase_key");
-      currentClient = null;
-      return { success: true };
-    }
-
-    if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
-      cleanUrl = `https://${cleanUrl}`;
-    }
-    cleanUrl = cleanUrl.replace(/\/+$/, "");
-
-    localStorage.setItem("shyam_custom_supabase_url", cleanUrl);
-    localStorage.setItem("shyam_custom_supabase_key", cleanKey);
-    
-    // Force re-create client
-    currentClient = createClient(cleanUrl, cleanKey, {
-      auth: { persistSession: true, autoRefreshToken: true },
-    });
-    lastUsedUrl = cleanUrl;
-    lastUsedKey = cleanKey;
-
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err?.message || "Failed to save Supabase credentials" };
-  }
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CartItem, CustomerAccount, HennaBooking } from '../types';
 import { STUDIO_INFO } from '../data/mockData';
 import {
@@ -8,12 +8,15 @@ import {
   insertSupabasePayment,
 } from '../lib/supabaseService';
 import { initiateRazorpayPayment } from '../lib/razorpay';
+import { sendBookingConfirmationEmails, EmailSendResult } from '../lib/emailService';
+import { openPrintableReceipt } from '../lib/receipt';
 import {
   calcMixedBag,
   formatINR,
-  RENTAL_DAY_OPTIONS,
+  rentalDaysBetween,
   SECURITY_DEPOSIT_NOTE,
 } from '../lib/rentalCalc';
+import DateInputDDMMYY from './DateInputDDMMYY';
 import { formatDateDDMMYY } from '../lib/dateFormat';
 
 interface CartCheckoutModalProps {
@@ -48,18 +51,25 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 }) => {
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
+  const [customerEmail, setCustomerEmail] = useState<string>('');
+  const [emailStatus, setEmailStatus] = useState<EmailSendResult | null>(null);
   const [customerAddress, setCustomerAddress] = useState<string>('');
   const [deliveryState, setDeliveryState] = useState<string>('Tamil Nadu');
   const [deliveryPincode, setDeliveryPincode] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [rentalDays, setRentalDays] = useState<number>(3);
+  const [rentalFromDate, setRentalFromDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [rentalToDate, setRentalToDate] = useState<string>(() => new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]);
+  // Inclusive rental length in days, derived from the from/to dates.
+  const rentalRangeDays = rentalDaysBetween(rentalFromDate, rentalToDate);
+  const rentalDays = Math.max(1, rentalRangeDays || 1);
   const [confirmedReceipt, setConfirmedReceipt] = useState<{
     ref: string;
     itemsSummary: string;
     itemCount: number;
     clientName: string;
     phone: string;
+    clientEmail: string;
     deliveryAddress: string;
     deliveryState: string;
     deliveryPincode: string;
@@ -71,14 +81,48 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
     rentalBreakdown?: string;
   } | null>(null);
 
+  const AUTO_CLOSE_SECONDS = 10;
+  const [autoCloseIn, setAutoCloseIn] = useState<number>(AUTO_CLOSE_SECONDS);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (customerUser) {
       if (customerUser.name) setCustomerName(customerUser.name);
       if (customerUser.phone) setCustomerPhone(customerUser.phone);
+      if (customerUser.email) setCustomerEmail(customerUser.email);
     }
   }, [customerUser]);
 
-  if (!isOpen && !confirmedReceipt) return null;
+  // Auto-close the Order Success card a few seconds after payment.
+  // The user can still download the receipt / chat on WhatsApp before it closes,
+  // or dismiss it early via the ✕ button.
+  useEffect(() => {
+    if (!confirmedReceipt) {
+      setAutoCloseIn(AUTO_CLOSE_SECONDS);
+      return;
+    }
+    setAutoCloseIn(AUTO_CLOSE_SECONDS);
+    const startedAt = Date.now();
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, AUTO_CLOSE_SECONDS - Math.floor((Date.now() - startedAt) / 1000));
+      setAutoCloseIn(remaining);
+    }, 500);
+    const timeout = setTimeout(() => {
+      setConfirmedReceipt(null);
+      setEmailStatus(null);
+      onCloseRef.current();
+    }, AUTO_CLOSE_SECONDS * 1000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [confirmedReceipt]);
+
+  // NOTE: do not return null here — all hooks must run on every render.
+  // The early return happens right before the JSX below.
 
   // Sale items: full price. Rental items: per-day rent × rentalDays, plus
   // 40% of the original price as a refundable security deposit.
@@ -114,6 +158,10 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       setFormError('Please enter a valid 10-digit mobile / WhatsApp number.');
       return;
     }
+    if (!customerEmail.trim() || !customerEmail.trim().includes('@')) {
+      setFormError('Please enter a valid email address — the order confirmation & receipt will be sent to this email.');
+      return;
+    }
     if (!customerAddress.trim() || customerAddress.trim().length < 8) {
       setFormError('Please enter full delivery address (Door No, Street, Area, City).');
       return;
@@ -134,6 +182,16 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       setFormError(`Rental price is not set for ${invalidRental.product.name}. Please remove it or WhatsApp the studio to book this rental.`);
       return;
     }
+    if (hasRentalItems) {
+      if (!rentalFromDate || !rentalToDate) {
+        setFormError('Please select both the rental From and To dates.');
+        return;
+      }
+      if (rentalRangeDays < 1) {
+        setFormError('The rental To date cannot be before the From date.');
+        return;
+      }
+    }
 
     setIsSubmitting(true);
     const refCode = `BAG-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -145,7 +203,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         orderType: 'jewellery_bag',
         amount: grandTotal,
         customerName: customerName.trim(),
-        customerEmail: customerUser?.email || 'client@shyamcreations.com',
+        customerEmail: customerEmail.trim(),
         customerPhone: customerPhone.trim(),
         serviceOrProductName: hasRentalItems
           ? `Shopping Bag (Rental ${bagCalc.days} days): ${itemsSummary} — Rental ${formatINR(bagCalc.rentalTotal)} + Deposit ${formatINR(securityDepositNum)}`
@@ -154,6 +212,10 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         jewelleryId: cartItems[0]?.productId,
         deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         itemsToDecrement: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        shippingFee: shippingFeeNum === 0 ? 'FREE' : `₹${shippingFeeNum}`,
+        startDate: hasRentalItems ? rentalFromDate : undefined,
+        endDate: hasRentalItems ? rentalToDate : undefined,
+        durationDays: hasRentalItems ? bagCalc.days : undefined,
       });
 
       if (!paymentResult.success) {
@@ -173,16 +235,14 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       const formattedDeposit = formatINR(securityDepositNum);
       // Customer-facing — no original amount shown (calculation only).
       const rentalBreakdown = hasRentalItems
-        ? `Rental ${bagCalc.days} days: rental ${formatINR(bagCalc.rentalTotal)} + security deposit ${formattedDeposit} (refundable after safe return)`
+        ? `Rental ${formatDateDDMMYY(rentalFromDate)} → ${formatDateDDMMYY(rentalToDate)} (${bagCalc.days} days): rental ${formatINR(bagCalc.rentalTotal)} + security deposit ${formattedDeposit} (refundable after safe return)`
         : '';
       // Internal studio record (DB notes only).
       const rentalBreakdownInternal = hasRentalItems
         ? `Original total ${formatINR(bagCalc.originalTotal)} | ${rentalBreakdown}`
         : '';
-      const startDateIso = new Date().toISOString().split('T')[0];
-      const endDateIso = hasRentalItems
-        ? new Date(Date.now() + (bagCalc.days - 1) * 86400000).toISOString().split('T')[0]
-        : startDateIso;
+      const startDateIso = hasRentalItems ? rentalFromDate : new Date().toISOString().split('T')[0];
+      const endDateIso = hasRentalItems ? rentalToDate : startDateIso;
       const rentalDailySummary = cartItems
         .filter((i) => i.product.type === 'Rental')
         .map((i) => `${i.product.name} ${i.product.rentalPriceDay || ''}`)
@@ -194,7 +254,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         customerName: customerName.trim(),
         phone: customerPhone.trim(),
         whatsapp: customerPhone.trim(),
-        email: customerUser?.email || 'client@shyamcreations.com',
+        email: customerEmail.trim(),
         deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         productName: `Shopping Bag: ${itemsSummary}`,
         jewelleryId: cartItems[0]?.productId || 'bag-items',
@@ -213,7 +273,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         bookingRef: refCode,
         clientName: customerName.trim(),
         phone: customerPhone.trim(),
-        email: customerUser?.email || 'client@shyamcreations.com',
+        email: customerEmail.trim(),
         productName: `Bag: ${itemsSummary}`,
         jewelleryId: cartItems[0]?.productId || 'bag-items',
         bookingType: hasRentalItems ? 'Rental' : 'Purchase',
@@ -249,7 +309,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         timeSlot: 'Express Courier Dispatch',
         location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         clientName: customerName.trim(),
-        clientEmail: customerUser?.email || 'client@shyamcreations.com',
+        clientEmail: customerEmail.trim(),
         phone: customerPhone.trim(),
         wa: customerPhone.trim(),
         deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
@@ -267,12 +327,14 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         await onAddOrder(newOrder);
       }
 
+      const deliveryAddressFull = `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`;
       setConfirmedReceipt({
         ref: refCode,
         itemsSummary,
         itemCount: cartItems.length,
         clientName: customerName.trim(),
         phone: customerPhone.trim(),
+        clientEmail: customerEmail.trim(),
         deliveryAddress: customerAddress.trim(),
         deliveryState: deliveryState.trim(),
         deliveryPincode: deliveryPincode.trim(),
@@ -283,12 +345,88 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         securityDeposit: hasRentalItems ? formattedDeposit : undefined,
         rentalBreakdown,
       });
+
+      // Send the same booking confirmation email (EmailJS) as the Mehandi flow
+      const emailRes = await sendBookingConfirmationEmails({
+        ref: refCode,
+        clientName: customerName.trim(),
+        clientEmail: customerEmail.trim(),
+        clientPhone: customerPhone.trim(),
+        clientWa: customerPhone.trim(),
+        serviceName: `Shopping Bag: ${itemsSummary}`,
+        serviceCategory: 'Jewellery Rental & Sale',
+        date: startDateIso,
+        timeSlot: hasRentalItems ? `Express Courier — Rental ${bagCalc.days} days` : 'Express Courier — Dispatch',
+        location: deliveryAddressFull,
+        specialRequests: `${rentalBreakdown ? rentalBreakdown + ' | ' : ''}${hasRentalItems ? SECURITY_DEPOSIT_NOTE + ' | ' : ''}Address: ${deliveryAddressFull}`,
+        type: 'jewellery',
+        paymentStatus: 'Paid',
+        paymentAmount: formattedTotal,
+        paymentMethod: 'Razorpay (Online Payment)',
+        transactionId: verifiedTxnId,
+        receipt: {
+          title: 'Jewellery Order Receipt',
+          ref: refCode,
+          date: formatDateDDMMYY(startDateIso),
+          customerName: customerName.trim(),
+          customerPhone: customerPhone.trim(),
+          customerEmail: customerEmail.trim(),
+          address: deliveryAddressFull,
+          items: [
+            { label: `Shopping Bag (${cartItems.length} items)`, value: formattedSubtotal },
+            { label: 'Items', value: itemsSummary },
+            ...(hasRentalItems && rentalBreakdown ? [{ label: 'Rental Breakdown', value: rentalBreakdown }] : []),
+          ],
+          summary: [
+            ...(hasRentalItems ? [{ label: 'Security Deposit (refundable)', value: formattedDeposit }] : []),
+            { label: 'Shipping Charges', value: formattedShipping },
+          ],
+          totalLabel: 'Grand Total',
+          totalAmount: formattedTotal,
+          paymentMethod: 'Razorpay (Online Payment)',
+          paymentStatus: 'Paid',
+          transactionId: verifiedTxnId,
+          notes: hasRentalItems ? `Rental Period: ${formatDateDDMMYY(startDateIso)} to ${formatDateDDMMYY(endDateIso)} (${bagCalc.days} days)` : SECURITY_DEPOSIT_NOTE,
+        },
+      });
+      setEmailStatus(emailRes);
     } catch (err: any) {
       console.error('Razorpay bag checkout error:', err);
       setFormError(err?.message || 'Failed to complete Razorpay payment.');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const downloadBagReceipt = () => {
+    if (!confirmedReceipt) return;
+    const items = [
+      { label: `Shopping Bag (${confirmedReceipt.itemCount} items)`, value: confirmedReceipt.subtotal },
+      { label: 'Items', value: confirmedReceipt.itemsSummary },
+    ];
+    if (confirmedReceipt.securityDeposit) {
+      items.push({ label: 'Security Deposit (refundable)', value: confirmedReceipt.securityDeposit });
+    }
+    if (confirmedReceipt.rentalBreakdown) {
+      items.push({ label: 'Rental Breakdown', value: confirmedReceipt.rentalBreakdown });
+    }
+    openPrintableReceipt({
+      title: 'Jewellery Order Receipt',
+      ref: confirmedReceipt.ref,
+      date: formatDateDDMMYY(new Date().toISOString().split('T')[0]),
+      customerName: confirmedReceipt.clientName,
+      customerPhone: confirmedReceipt.phone,
+      customerEmail: confirmedReceipt.clientEmail,
+      address: `${confirmedReceipt.deliveryAddress}, ${confirmedReceipt.deliveryState} - ${confirmedReceipt.deliveryPincode}`,
+      items,
+      summary: [{ label: 'Shipping Charges', value: confirmedReceipt.shippingFee }],
+      totalLabel: 'Grand Total',
+      totalAmount: confirmedReceipt.totalAmount,
+      paymentMethod: 'Razorpay (Online Payment)',
+      paymentStatus: 'Paid',
+      transactionId: confirmedReceipt.transactionId,
+      notes: confirmedReceipt.rentalBreakdown || SECURITY_DEPOSIT_NOTE,
+    });
   };
 
   const openWhatsAppBagReceipt = () => {
@@ -311,13 +449,24 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
     return 'Outside Tamil Nadu pincode — shipping charge: ₹150';
   }, [deliveryState, deliveryPincode]);
 
+  if (!isOpen && !confirmedReceipt) return null;
+
   return (
     <div
       id="cart-checkout-modal-overlay"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 md:p-6 animate-in fade-in duration-200 overflow-y-auto"
     >
       {confirmedReceipt ? (
-        <div className="bg-[var(--sc-bg-soft)] rounded-3xl p-6 md:p-8 max-w-lg w-full border border-[var(--sc-emerald)] shadow-2xl space-y-6 relative text-center">
+        <div className="bg-[var(--sc-bg-soft)] rounded-3xl p-6 md:p-8 max-w-lg w-full border border-[var(--sc-emerald)] shadow-2xl space-y-6 relative text-center max-h-[92vh] overflow-y-auto">
+          <button
+            type="button"
+            onClick={() => { setConfirmedReceipt(null); setEmailStatus(null); onClose(); }}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-border)] text-[var(--sc-text)] flex items-center justify-center transition-colors cursor-pointer"
+            title="Close"
+            aria-label="Close"
+          >
+            <span className="material-symbols-outlined text-lg leading-none">close</span>
+          </button>
           <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <span className="material-symbols-outlined text-3xl">check_circle</span>
           </div>
@@ -378,8 +527,54 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
             </div>
           </div>
 
+          {/* Email Confirmation Banner */}
+          <div className={`p-3.5 border rounded-2xl text-[11px] text-left space-y-1.5 shadow-xs ${
+            emailStatus?.clientEmailSent ? 'bg-emerald-50 border-emerald-200/80 text-emerald-900' : 'bg-amber-50 border-amber-200/80 text-amber-900'
+          }`}>
+            <div className="flex items-center justify-between font-bold">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base">mark_email_read</span>
+                <span>Email Dispatch Status</span>
+              </div>
+              <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
+                emailStatus?.clientEmailSent ? 'bg-emerald-200/80 text-emerald-900' : 'bg-amber-200/80 text-amber-900'
+              }`}>
+                {emailStatus?.clientEmailSent ? '✓ Delivered' : '⚠️ Pending'}
+              </span>
+            </div>
+            <p className="text-[10px] leading-snug">
+              • Customer ({confirmedReceipt.clientEmail}): {
+                emailStatus?.clientEmailSent ? (
+                  <strong className="text-emerald-900">✓ Sent via EmailJS</strong>
+                ) : (
+                  <strong className="text-amber-900">⚠️ {emailStatus?.error || 'Dispatch check required'}</strong>
+                )
+              }
+            </p>
+          </div>
+
+          {/* Auto-close countdown */}
+          <div className="flex items-center gap-2 px-1">
+            <span className="material-symbols-outlined text-sm text-[var(--sc-text-dim)]">timer</span>
+            <div className="flex-1 h-1.5 bg-[var(--sc-border)]/50 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--sc-emerald-dark)] rounded-full transition-all duration-500 ease-linear"
+                style={{ width: `${(autoCloseIn / AUTO_CLOSE_SECONDS) * 100}%` }}
+              />
+            </div>
+            <span className="text-[10px] font-mono font-bold text-[var(--sc-text-dim)] tabular-nums">{autoCloseIn}s</span>
+          </div>
+
           {/* Action Buttons */}
           <div className="space-y-2 pt-1">
+            <button
+              type="button"
+              onClick={downloadBagReceipt}
+              className="w-full py-3.5 bg-[var(--sc-emerald-dark)] hover:bg-[var(--sc-emerald)] text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-base">receipt_long</span>
+              <span>DOWNLOAD / PRINT RECEIPT</span>
+            </button>
             <button
               type="button"
               onClick={openWhatsAppBagReceipt}
@@ -395,6 +590,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
               type="button"
               onClick={() => {
                 setConfirmedReceipt(null);
+                setEmailStatus(null);
                 onClose();
                 if (onViewOrders) onViewOrders();
               }}
@@ -457,19 +653,23 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 
             {hasRentalItems && (
               <div className="space-y-2">
-                <label className="block text-xs font-bold text-[var(--sc-text-dim)]">Rental days (for rental items)</label>
-                <div className="flex flex-wrap gap-2">
-                  {RENTAL_DAY_OPTIONS.map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setRentalDays(d)}
-                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer ${rentalDays === d ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)]' : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] border-[var(--sc-border)]'}`}
-                    >
-                      {d} {d === 1 ? 'Day' : 'Days'}
-                    </button>
-                  ))}
+                <label className="block text-xs font-bold text-[var(--sc-text-dim)]">Rental period <span className="text-red-500">*</span> (applies to rental items)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[var(--sc-text-dim)] mb-1 uppercase tracking-wider">From</label>
+                    <DateInputDDMMYY id="bag-rental-from-date" value={rentalFromDate} onChange={setRentalFromDate} min={new Date().toISOString().split('T')[0]} placeholder="DD/MM/YY" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[var(--sc-text-dim)] mb-1 uppercase tracking-wider">To</label>
+                    <DateInputDDMMYY id="bag-rental-to-date" value={rentalToDate} onChange={setRentalToDate} min={rentalFromDate || new Date().toISOString().split('T')[0]} placeholder="DD/MM/YY" />
+                  </div>
                 </div>
+                <p className="text-[11px] font-bold text-[var(--sc-emerald-dark)] mt-1.5 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm">date_range</span>
+                  {rentalRangeDays >= 1
+                    ? `${rentalRangeDays} ${rentalRangeDays === 1 ? 'day' : 'days'} (${formatDateDDMMYY(rentalFromDate)} → ${formatDateDDMMYY(rentalToDate)})`
+                    : 'Select a valid From → To range'}
+                </p>
               </div>
             )}
             <div className="border-t border-[var(--sc-border)] pt-2 flex items-center justify-between text-xs font-bold">
@@ -520,7 +720,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">
+                <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — order confirmation & receipt will be emailed here">
                   Contact / WhatsApp Number <span className="text-red-500" title="Required">*</span>
                 </label>
                 <input
@@ -531,6 +731,19 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                   className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)]"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — order confirmation & receipt will be emailed here">
+                Email <span className="text-red-500" title="Required">*</span>
+              </label>
+              <input
+                type="email"
+                placeholder="e.g. suji@example.com"
+                value={customerEmail}
+                onChange={(e) => setCustomerEmail(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)]"
+              />
             </div>
 
             <div>

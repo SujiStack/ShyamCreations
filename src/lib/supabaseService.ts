@@ -1,8 +1,6 @@
 import {
   supabase,
   getSupabaseCredentials,
-  getSupabaseClient,
-  saveCustomSupabaseCredentials,
 } from './supabase';
 import { HennaBooking, JewelleryCustomer, JewelleryBooking, CustomerAccount, CartItem, JewelleryRental } from '../types';
 import { formatDateDDMMYY } from './dateFormat';
@@ -103,8 +101,8 @@ CREATE TABLE IF NOT EXISTS public.jewellery_customers (
     product_name VARCHAR(255) NOT NULL,
     jewellery_id VARCHAR(100),
     item_price VARCHAR(50) NOT NULL DEFAULT '₹2,500',
-    shipping_fee VARCHAR(50) NOT NULL DEFAULT '₹50',
-    total_amount VARCHAR(50) NOT NULL DEFAULT '₹2,550',
+    shipping_fee VARCHAR(50) NOT NULL DEFAULT '₹60',
+    total_amount VARCHAR(50) NOT NULL DEFAULT '₹2,560',
     payment_method VARCHAR(100) DEFAULT 'Google Pay / UPI',
     upi_transaction_id VARCHAR(100) NOT NULL,
     payment_status VARCHAR(50) DEFAULT 'Paid',
@@ -260,7 +258,7 @@ export async function testSupabaseConnection(): Promise<SupabaseDiagnosticResult
   const result: SupabaseDiagnosticResult = {
     isConfigured: creds.isConfigured,
     url: creds.url,
-    isCustom: creds.isCustom,
+    isCustom: false,
     reachable: false,
     jewelleryTableExists: false,
     jewelleryRowCount: 0,
@@ -365,6 +363,12 @@ export function parseBookingNotes(notes?: string | null): { location: string; re
 /**
  * Fetch all bookings from Supabase 'bookings' table
  */
+/** Jewellery orders carry JW-/BAG- refs (Mehendi uses SC-) — the bookings table has no type column. */
+const isJewelleryOrderRef = (ref?: string | null): boolean => {
+  const r = String(ref || '').toUpperCase();
+  return r.startsWith('JW-') || r.startsWith('BAG-');
+};
+
 export async function fetchSupabaseBookings(): Promise<HennaBooking[] | null> {
   if (!isSupabaseConfigured()) return null;
 
@@ -402,7 +406,7 @@ export async function fetchSupabaseBookings(): Promise<HennaBooking[] | null> {
         specialRequests: parsed.requests,
         artist: row.occasion ? `Specialist (${row.occasion})` : 'Senior Specialist',
         status: (row.status as any) || 'Confirmed',
-        type: 'henna' as const,
+        type: isJewelleryOrderRef(row.ref) || row.service?.toLowerCase().includes('jewel') ? 'jewellery' : 'henna',
         paymentStatus: isAdvancePaymentText(parsed.requests) ? 'Advance Paid' : payInfo?.status || undefined,
         paymentAmount: payInfo?.amount || extractPaidAmountFromRequests(parsed.requests) || undefined,
         totalPrice: extractServicePrice(row.service) || payInfo?.amount || undefined,
@@ -991,13 +995,6 @@ export async function fetchSupabaseJewellery(): Promise<any[] | null> {
       };
     });
 
-    // Cache to localStorage for offline access & fast reloads
-    try {
-      localStorage.setItem('shyam_jewellery_products', JSON.stringify(parsedProducts));
-    } catch (cacheErr) {
-      console.warn('Could not cache Supabase jewellery into localStorage:', cacheErr);
-    }
-
     return parsedProducts;
   } catch (err) {
     console.warn('Supabase fetch jewellery unexpected error:', err);
@@ -1141,78 +1138,18 @@ export async function loginSupabaseAdmin(
 
       if (error) {
         console.warn('Supabase Auth error:', error.message);
-
-        // Fallback: check custom 'admins' table (for legacy setup)
-        try {
-          const { data: dbUser, error: dbErr } = await supabase
-            .from('admins')
-            .select('*')
-            .eq('email', cleanEmail)
-            .maybeSingle();
-
-          if (!dbErr && dbUser && dbUser.password === cleanPass) {
-            return { success: true, user: dbUser };
-          }
-        } catch {
-          // Table doesn't exist
-        }
-
-        const isNetworkErr =
-          error.message?.toLowerCase().includes('network') ||
-          error.message?.toLowerCase().includes('fetch') ||
-          error.message?.toLowerCase().includes('failed to fetch');
-
-        if (isNetworkErr) {
-          if (isMasterAdminEmail && cleanPass.length >= 4) {
-            return {
-              success: true,
-              user: { email: cleanEmail, role: 'authenticated_admin', id: 'master-admin-offline' },
-              isOffline: true,
-              isEmergency: true,
-            };
-          }
-
-          return {
-            success: false,
-            error: `Network Connection Error connecting to Supabase (${creds.url}). Please check your Database URL in Config settings or verify your network connection.`
-          };
-        }
-
         return { success: false, error: error.message || 'Invalid email or password.' };
       }
     } catch (err: any) {
       console.warn('Supabase auth network exception:', err);
-
-      if (isMasterAdminEmail && cleanPass.length >= 4) {
-        return {
-          success: true,
-          user: { email: cleanEmail, role: 'authenticated_admin', id: 'master-admin-offline' },
-          isOffline: true,
-          isEmergency: true,
-        };
-      }
-
       return {
         success: false,
-        error: `Network error connecting to Supabase (${creds.url}). Please check your Supabase Project URL in Database Config.`
+        error: `Could not reach Supabase (${creds.url}). Check your network connection and try again.`
       };
     }
   }
 
-  // If Supabase not yet configured or URL invalid, allow master studio admin login to access settings
-  if (isMasterAdminEmail && cleanPass.length >= 4) {
-    return {
-      success: true,
-      user: { email: cleanEmail, role: 'authenticated_admin', id: 'master-admin-local' },
-      isOffline: true,
-      isEmergency: true,
-    };
-  }
-
-  return {
-    success: false,
-    error: 'Supabase is not configured. Please enter your Supabase Project URL & Anon Key in the Database Configuration modal.'
-  };
+  return { success: false, error: 'Admin portal requires the Supabase backend to be configured and reachable.' };
 }
 
 /**
@@ -1291,7 +1228,28 @@ export async function insertSupabaseJewelleryCustomer(
       notes: customer.notes || '',
     };
 
-    const { error } = await supabase.from('jewellery_customers').insert([payload]);
+    // Update-if-exists by order_ref — the payment verification function may
+    // auto-register a minimal row on payment; this fills in the full details
+    // (and avoids duplicate rows for the same ref).
+    const { data: existingCustomer, error: lookupError } = await supabase
+      .from('jewellery_customers')
+      .select('id')
+      .eq('order_ref', customer.orderRef)
+      .maybeSingle();
+
+    let error: any = lookupError || null;
+    if (!error) {
+      if (existingCustomer?.id) {
+        const { error: updateError } = await supabase
+          .from('jewellery_customers')
+          .update(payload)
+          .eq('id', existingCustomer.id);
+        error = updateError || null;
+      } else {
+        const { error: insertError } = await supabase.from('jewellery_customers').insert([payload]);
+        error = insertError || null;
+      }
+    }
 
     if (error) {
       console.error('Supabase insert jewellery customer error:', error.message);
@@ -1454,7 +1412,28 @@ export async function insertSupabaseJewelleryBooking(
       notes: booking.notes || '',
     };
 
-    const { error } = await supabase.from('jewellery_bookings').insert([payload]);
+    // Update-if-exists by booking_ref — the payment verification function may
+    // auto-register a minimal row on payment; this fills in the full details
+    // (including the rental From/To dates) and avoids duplicate rows.
+    const { data: existingBooking, error: lookupError } = await supabase
+      .from('jewellery_bookings')
+      .select('id')
+      .eq('booking_ref', booking.bookingRef)
+      .maybeSingle();
+
+    let error: any = lookupError || null;
+    if (!error) {
+      if (existingBooking?.id) {
+        const { error: updateError } = await supabase
+          .from('jewellery_bookings')
+          .update(payload)
+          .eq('id', existingBooking.id);
+        error = updateError || null;
+      } else {
+        const { error: insertError } = await supabase.from('jewellery_bookings').insert([payload]);
+        error = insertError || null;
+      }
+    }
 
     if (error) {
       console.error('Supabase insert jewellery_bookings error:', error.message);
@@ -1705,7 +1684,7 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
           wa: row.wa || '',
           specialRequests: parsed.requests,
           status: (row.status as any) || 'Confirmed',
-          type: row.service?.toLowerCase().includes('jewel') ? 'jewellery' : 'henna',
+          type: isJewelleryOrderRef(row.ref) || row.service?.toLowerCase().includes('jewel') ? 'jewellery' : 'henna',
           // Advance flag only exists in the requests text — the payments
           // ledger says PAID for both advance and full payments, so restore
           // "Advance Paid" here or DB-fetched bookings lose it.
@@ -1731,7 +1710,11 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
       .select('*')
       .or(jbFilter);
 
+    const jbRefs = new Set<string>();
     if (jbData && jbData.length > 0) {
+      for (const row of jbData) {
+        if (row?.booking_ref) jbRefs.add(String(row.booking_ref));
+      }
       result.jewelleryBookings = jbData.map((row: DBJewelleryBookingRow) => ({
         id: row.id,
         bookingRef: row.booking_ref,
@@ -1754,9 +1737,16 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         status: (row.status as any) || 'Active Rental',
         notes: row.notes || '',
       }));
+    }
 
-      // Convert jewellery bookings into JewelleryRental list for rentals tab UI
-      result.jewelleryRentals = result.jewelleryBookings.map((jb) => ({
+    // Build ONE card per jewellery order, keyed by ref. 'jewellery_bookings'
+    // carries the rental window (From/To), 'jewellery_customers' carries the
+    // order details (totals, shipping, address). Both tables get a row for the
+    // same order, so we merge them by ref instead of showing the order twice.
+    const rentalsByRef = new Map<string, JewelleryRental>();
+    for (const jb of result.jewelleryBookings) {
+      const isPurchase = String(jb.bookingType || '').toLowerCase() === 'purchase';
+      rentalsByRef.set(jb.bookingRef, {
         id: jb.id || jb.bookingRef,
         productName: jb.productName,
         ref: jb.bookingRef,
@@ -1769,12 +1759,17 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         dailyRate: jb.dailyRate || '₹1,500/day',
         depositAmount: jb.depositAmount,
         durationDays: jb.durationDays,
-        status: jb.status === 'Returned' ? 'Returned' : (jb.status === 'Overdue' ? 'Overdue' : 'Active Rental'),
+        status: isPurchase
+          ? jb.status || 'Confirmed'
+          : jb.status === 'Returned'
+            ? 'Returned'
+            : (jb.status === 'Overdue' ? 'Overdue' : 'Active Rental'),
+        bookingType: jb.bookingType,
         paymentStatus: jb.paymentStatus,
         paymentMethod: jb.paymentMethod,
         transactionId: jb.transactionId,
         totalAmount: jb.totalPrice,
-      }));
+      });
     }
 
     // 3. Query 'jewellery_customers' table
@@ -1810,29 +1805,61 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         notes: row.notes || '',
       }));
 
-      // Also append customer orders to jewellery rentals list so user sees all items
-      const customerRentals: JewelleryRental[] = result.jewelleryCustomers.map((jc) => ({
-        id: jc.id || jc.orderRef,
-        productName: `${jc.productName} (Express Dispatch)`,
-        ref: jc.orderRef,
-        clientName: jc.customerName,
-        phone: jc.phone,
-        email: jc.email,
-        image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&q=80&w=600',
-        startDate: new Date(jc.created_at || Date.now()).toISOString().split('T')[0],
-        returnDue: jc.deliveryAddress || 'Courier Dispatch',
-        dailyRate: jc.totalAmount,
-        status: jc.orderStatus === 'Delivered' ? 'Returned' : 'Active Rental',
-        paymentStatus: jc.paymentStatus,
-        paymentMethod: jc.paymentMethod,
-        transactionId: jc.upiTransactionId,
-        totalAmount: jc.totalAmount,
-        itemPrice: jc.itemPrice,
-        shippingFee: jc.shippingFee,
-        deliveryAddress: jc.deliveryAddress,
-      }));
+      // Merge customer order details into the same ref-keyed card (or create one)
+      for (const jc of result.jewelleryCustomers) {
+        const existing = rentalsByRef.get(jc.orderRef);
+        const orderCard: JewelleryRental = {
+          id: jc.id || jc.orderRef,
+          productName: jc.productName,
+          ref: jc.orderRef,
+          clientName: jc.customerName,
+          phone: jc.phone,
+          email: jc.email,
+          image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&q=80&w=600',
+          startDate: new Date(jc.created_at || Date.now()).toISOString().split('T')[0],
+          returnDue: jc.deliveryAddress || 'Courier Dispatch',
+          dailyRate: jc.totalAmount,
+          status: jc.orderStatus === 'Delivered' ? 'Returned' : 'Active Rental',
+          paymentStatus: jc.paymentStatus,
+          paymentMethod: jc.paymentMethod,
+          transactionId: jc.upiTransactionId,
+          totalAmount: jc.totalAmount,
+          itemPrice: jc.itemPrice,
+          shippingFee: jc.shippingFee,
+          deliveryAddress: jc.deliveryAddress,
+        };
+        if (existing) {
+          // Rental window (From/To) comes from jewellery_bookings; the order
+          // totals/address/payment come from jewellery_customers.
+          rentalsByRef.set(jc.orderRef, {
+            ...existing,
+            productName: orderCard.productName,
+            totalAmount: orderCard.totalAmount,
+            paymentStatus: orderCard.paymentStatus,
+            paymentMethod: orderCard.paymentMethod,
+            transactionId: orderCard.transactionId,
+            itemPrice: orderCard.itemPrice,
+            shippingFee: orderCard.shippingFee,
+            deliveryAddress: orderCard.deliveryAddress,
+            image: orderCard.image,
+            id: orderCard.id,
+          });
+        } else {
+          rentalsByRef.set(jc.orderRef, orderCard);
+        }
+      }
+    }
 
-      result.jewelleryRentals = [...result.jewelleryRentals, ...customerRentals];
+    result.jewelleryRentals = [...rentalsByRef.values()];
+
+    // Exclude jewellery orders from the 'bookings' table list — every such row
+    // has a richer twin in the jewellery tables above (same ref). Keeping both
+    // showed one order twice with different fields.
+    if (jbRefs.size > 0 || rentalsByRef.size > 0) {
+      const jewelleryRefSet = new Set<string>([...jbRefs, ...rentalsByRef.keys()]);
+      result.hennaBookings = result.hennaBookings.filter(
+        (b) => !b.ref || !jewelleryRefSet.has(b.ref)
+      );
     }
   } catch (err) {
     console.error('Error fetching combined user bookings by phone:', err);
@@ -1869,77 +1896,100 @@ USING (true)
 WITH CHECK (true);
 `;
 
-const CUSTOMER_LOCAL_STORAGE_KEY = 'shyam_customer_auth';
-const CUSTOMER_ACCOUNTS_LOCAL_DB_KEY = 'shyam_local_customer_accounts';
-
 /**
- * Get cached local customer accounts list for offline fallback
+ * Customer accounts are backed by Supabase Auth (sessions managed by the
+ * Supabase Auth SDK — no app data is kept in localStorage). Behaviour:
+ *  - signup  → supabase.auth.signUp  + profile row in customer_accounts (id = auth user id)
+ *  - sign in → supabase.auth.signInWithPassword (phone identifiers resolve to the account email)
+ *  - session restore → supabase.auth.getSession() on app start
+ *  - password reset → supabase.auth.resetPasswordForEmail / updateUser
+ *  - NO local account database, NO stored passwords, NO session snapshots in localStorage.
  */
-function getLocalCustomerAccounts(): CustomerAccount[] {
-  try {
-    const raw = localStorage.getItem(CUSTOMER_ACCOUNTS_LOCAL_DB_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
 
-/**
- * Save cached local customer accounts list
- */
-function saveLocalCustomerAccounts(accounts: CustomerAccount[]): void {
+export async function getCurrentCustomerAccount(): Promise<CustomerAccount | null> {
+  if (!isSupabaseConfigured()) return null;
   try {
-    localStorage.setItem(CUSTOMER_ACCOUNTS_LOCAL_DB_KEY, JSON.stringify(accounts));
+    const { data: sessionData } = await supabase.auth.getSession();
+    const authUser = sessionData.session?.user;
+    if (!authUser) return null;
+
+    // 1) Profile linked by auth user id
+    let { data: profile } = await supabase
+      .from('customer_accounts')
+      .select('*')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    // 2) Fallback: match by email (legacy rows) and link it to the auth id
+    if (!profile && authUser.email) {
+      const { data: byEmail } = await supabase
+        .from('customer_accounts')
+        .select('*')
+        .ilike('email', authUser.email)
+        .maybeSingle();
+      if (byEmail) {
+        const { data: linked } = await supabase
+          .from('customer_accounts')
+          .update({ id: authUser.id })
+          .eq('id', byEmail.id)
+          .select()
+          .maybeSingle();
+        profile = linked || { ...byEmail, id: authUser.id };
+      }
+    }
+
+    // 3) Fallback: auto-create a minimal profile from auth metadata
+    if (!profile && authUser.email) {
+      const meta = (authUser as any).user_metadata || {};
+      const { data: created } = await supabase
+        .from('customer_accounts')
+        .insert([{
+          id: authUser.id,
+          name: meta.name || authUser.email.split('@')[0],
+          email: authUser.email,
+          phone: meta.phone || '',
+          wishlist: [],
+          cart: [],
+        }])
+        .select()
+        .maybeSingle();
+      profile = created || null;
+    }
+
+    if (!profile) return null;
+    return {
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      phone: profile.phone,
+      wishlist: Array.isArray(profile.wishlist) ? profile.wishlist : [],
+      cart: Array.isArray(profile.cart) ? profile.cart : [],
+      created_at: profile.created_at,
+    };
   } catch (e) {
-    console.warn('Failed to save local customer accounts:', e);
-  }
-}
-
-/**
- * Get active logged-in customer from localStorage
- */
-export function getStoredCustomerAccount(): CustomerAccount | null {
-  try {
-    const raw = localStorage.getItem(CUSTOMER_LOCAL_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
+    console.warn('Failed to load current customer account:', e);
     return null;
   }
 }
 
+/** Backward-compatible alias — now async and session-based (nothing cached locally). */
+export async function getStoredCustomerAccount(): Promise<CustomerAccount | null> {
+  return getCurrentCustomerAccount();
+}
+
 /**
- * Save or clear active logged-in customer in localStorage
+ * Sign the customer out (clears the Supabase Auth session).
  */
-export function setStoredCustomerAccount(user: CustomerAccount | null): void {
+export async function logoutCustomerAccount(): Promise<void> {
   try {
-    if (user) {
-      localStorage.setItem(CUSTOMER_LOCAL_STORAGE_KEY, JSON.stringify(user));
-    } else {
-      localStorage.removeItem(CUSTOMER_LOCAL_STORAGE_KEY);
-    }
+    await supabase.auth.signOut();
   } catch (e) {
-    console.warn('Failed to update stored customer account:', e);
+    console.warn('Failed to sign out customer:', e);
   }
 }
 
 /**
- * Cleanly log out customer account and purge local wishlist/cart keys
- */
-export function logoutCustomerAccount(): void {
-  setStoredCustomerAccount(null);
-  try {
-    localStorage.removeItem(CUSTOMER_LOCAL_STORAGE_KEY);
-    localStorage.removeItem('shyam_jewellery_wishlist');
-    localStorage.removeItem('shyam_jewellery_cart');
-    localStorage.removeItem('shyam_user_mobile');
-  } catch (e) {
-    console.warn('Failed to clear customer session data:', e);
-  }
-}
-
-/**
- * Check if customer exists by email or phone
+ * Check if customer exists by email or phone (Supabase only)
  */
 export async function checkCustomerExists(
   emailOrPhone: string
@@ -1949,7 +1999,7 @@ export async function checkCustomerExists(
 
   if (!query) return { exists: false };
 
-  // 1. Check Supabase
+  // Check Supabase
   if (isSupabaseConfigured()) {
     try {
       let filter = `email.ilike.${query}`;
@@ -1970,28 +2020,6 @@ export async function checkCustomerExists(
     } catch (e) {
       console.warn('Error checking customer existence in Supabase:', e);
     }
-  }
-
-  // 2. Check local accounts
-  const localAccounts = getLocalCustomerAccounts();
-  const foundLocal = localAccounts.find(
-    (a) =>
-      a.email.toLowerCase() === query ||
-      (digitsOnly.length >= 7 && a.phone.replace(/[^0-9]/g, '').includes(digitsOnly))
-  );
-
-  if (foundLocal) {
-    const matchedBy = foundLocal.email.toLowerCase() === query ? 'email' : 'phone';
-    return { exists: true, matchedBy, user: foundLocal };
-  }
-
-  // Check demo user
-  if (query === 'client@shyamcreations.com' || (digitsOnly.length >= 7 && '9363710342'.includes(digitsOnly))) {
-    return {
-      exists: true,
-      matchedBy: query.includes('@') ? 'email' : 'phone',
-      user: { name: 'Sanya Alisha', email: 'client@shyamcreations.com', phone: '+91 9363710342' },
-    };
   }
 
   return { exists: false };
@@ -2047,78 +2075,84 @@ export async function signupCustomerAccount(data: {
       }
 
       const newAccountPayload = {
+        id: '', // filled from the auth user id below
         name: trimmedName,
         email: normalizedEmail,
         phone: rawPhone,
-        password: data.password, // Stored in customer_accounts table
         wishlist: [],
         cart: [],
       };
 
+      // 1. Create the Supabase Auth user (password lives in auth.users, hashed)
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password: data.password,
+        options: {
+          data: { name: trimmedName, phone: rawPhone },
+        },
+      });
+
+      if (signUpError) {
+        const msg = signUpError.message?.toLowerCase().includes('already')
+          ? 'An account with this email address already exists. Please sign in or use Forgot Password.'
+          : signUpError.message || 'Could not create your account. Please try again.';
+        return { success: false, error: msg };
+      }
+
+      const authUser = signUpData.user;
+      if (!authUser?.id) {
+        return { success: false, error: 'Could not create your account. Please try again.' };
+      }
+
+      // 2. Create the profile row (id = auth user id, NO password stored)
+      const payload = { ...newAccountPayload, id: authUser.id };
       const { data: inserted, error: insertError } = await supabase
         .from('customer_accounts')
-        .insert([newAccountPayload])
+        .upsert([payload], { onConflict: 'id' })
         .select()
-        .single();
+        .maybeSingle();
 
       if (insertError) {
-        console.warn('Supabase customer_accounts insert error:', insertError.message);
-        // Fallback to local accounts if table is not yet created in Supabase
-      } else if (inserted) {
-        const userAccount: CustomerAccount = {
-          id: inserted.id,
-          name: inserted.name,
-          email: inserted.email,
-          phone: inserted.phone,
-          wishlist: Array.isArray(inserted.wishlist) ? inserted.wishlist : [],
-          cart: Array.isArray(inserted.cart) ? inserted.cart : [],
-          created_at: inserted.created_at,
-        };
-
-        setStoredCustomerAccount(userAccount);
-        return { success: true, user: userAccount };
+        console.warn('customer_accounts profile upsert warning:', insertError.message);
       }
+
+      const profile = inserted || { ...payload, created_at: new Date().toISOString() };
+      const userAccount: CustomerAccount = {
+        id: profile.id,
+        name: profile.name,
+        email: profile.email,
+        phone: profile.phone,
+        wishlist: [],
+        cart: [],
+        created_at: profile.created_at,
+      };
+
+      // If the project requires email confirmation, there is no session yet —
+      // sign in now succeeds only if confirmation is disabled.
+      if (!signUpData.session) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password: data.password,
+        });
+        if (signInError) {
+          return {
+            success: false,
+            error: 'Account created! Please confirm your email address (check your inbox) and then sign in.',
+          };
+        }
+      }
+
+      return { success: true, user: userAccount };
     } catch (err: any) {
       console.warn('Supabase customer signup error:', err);
+      return { success: false, error: 'Could not create your account right now. Please try again.' };
     }
   }
 
-  // 2. Local Fallback Database (Works offline or if table not yet run in Supabase)
-  const localAccounts = getLocalCustomerAccounts();
-  const existingEmail = localAccounts.find((a) => a.email.toLowerCase() === normalizedEmail);
-  if (existingEmail) {
-    return {
-      success: false,
-      error: 'An account with this email address already exists. Please sign in or use Forgot Password.',
-    };
-  }
-
-  const existingPhone = localAccounts.find(
-    (a) => a.phone.replace(/[^0-9]/g, '') === digitsOnly || a.phone === rawPhone
-  );
-  if (existingPhone) {
-    return {
-      success: false,
-      error: 'An account with this phone number already exists. Please sign in or use Forgot Password.',
-    };
-  }
-
-  const localUser: CustomerAccount = {
-    id: `cust-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
-    name: trimmedName,
-    email: normalizedEmail,
-    phone: rawPhone,
-    password: data.password,
-    wishlist: [],
-    cart: [],
-    created_at: new Date().toISOString(),
+  return {
+    success: false,
+    error: 'Sign-ups are unavailable — the studio database is not configured. Please contact the studio.',
   };
-
-  localAccounts.push(localUser);
-  saveLocalCustomerAccounts(localAccounts);
-  setStoredCustomerAccount(localUser);
-
-  return { success: true, user: localUser };
 }
 
 /**
@@ -2134,41 +2168,57 @@ export async function requestCustomerPasswordReset(
     return { success: false, error: 'Please enter your registered Email address or Mobile number.' };
   }
 
-  // Check existence
-  const check = await checkCustomerExists(emailOrPhone);
-  if (!check.exists || !check.user) {
+  // Resolve to the account email (phone numbers are mapped to their email)
+  let email = query.includes('@') ? query : '';
+  let accountName = 'Client';
+
+  if (isSupabaseConfigured()) {
+    try {
+      let rows: any[] | null = null;
+      if (email) {
+        const { data } = await supabase
+          .from('customer_accounts')
+          .select('id, name, email, phone')
+          .ilike('email', email)
+          .limit(1);
+        rows = data;
+      } else if (digitsOnly.length >= 7) {
+        const { data } = await supabase
+          .from('customer_accounts')
+          .select('id, name, email, phone')
+          .ilike('phone', `%${digitsOnly}%`)
+          .limit(1);
+        rows = data;
+      }
+      const found = rows && rows.length > 0 ? rows[0] : null;
+      if (found) {
+        email = found.email;
+        accountName = found.name || 'Client';
+      }
+    } catch (e) {
+      console.warn('Error resolving account for password reset:', e);
+    }
+  }
+
+  // Always respond with a success-style message to avoid account enumeration —
+  // Supabase Auth sends the actual reset email (configure SMTP for production).
+  if (email && isSupabaseConfigured()) {
+    const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/` : undefined;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      console.warn('resetPasswordForEmail error:', error.message);
+      return { success: false, error: 'Could not send the reset email. Please try again later.' };
+    }
     return {
-      success: false,
-      error: 'No account found with this email or phone number. Please check the details or create a new account.',
+      success: true,
+      accountName,
+      contactTarget: email,
     };
   }
 
-  // Generate a reliable 6-digit OTP code (e.g. 842195)
-  const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  // Store OTP temporarily in sessionStorage for verification
-  try {
-    sessionStorage.setItem(
-      'shyam_pwd_reset_session',
-      JSON.stringify({
-        identifier: query,
-        digitsOnly,
-        otp: generatedOtp,
-        accountName: check.user.name || 'Client',
-        email: check.user.email,
-        phone: check.user.phone,
-        timestamp: Date.now(),
-      })
-    );
-  } catch (e) {
-    console.warn('Session storage error:', e);
-  }
-
   return {
-    success: true,
-    otp: generatedOtp,
-    accountName: check.user.name || 'Client',
-    contactTarget: check.user.email || check.user.phone || emailOrPhone,
+    success: false,
+    error: 'No account found with this email or phone number. Please check the details or create a new account.',
   };
 }
 
@@ -2176,79 +2226,28 @@ export async function requestCustomerPasswordReset(
  * Reset Customer Account Password in Supabase and local cache
  */
 export async function resetCustomerPassword(
-  emailOrPhone: string,
+  _emailOrPhone: string,
   newPassword: string
 ): Promise<{ success: boolean; error?: string; user?: CustomerAccount }> {
-  const query = emailOrPhone.trim().toLowerCase();
-  const digitsOnly = emailOrPhone.replace(/[^0-9]/g, '');
-
-  if (!query || !newPassword || newPassword.length < 4) {
-    return { success: false, error: 'Password must be at least 4 characters long.' };
+  if (!newPassword || newPassword.length < 6) {
+    return { success: false, error: 'Password must be at least 6 characters long.' };
   }
 
-  let updatedUser: CustomerAccount | undefined;
-
-  // 1. Update in Supabase
-  if (isSupabaseConfigured()) {
-    try {
-      let filter = `email.ilike.${query}`;
-      if (digitsOnly.length >= 7) {
-        filter += `,phone.ilike.%${digitsOnly}%`;
-      }
-
-      const { data, error } = await supabase
-        .from('customer_accounts')
-        .update({ password: newPassword.trim() })
-        .or(filter)
-        .select();
-
-      if (!error && data && data.length > 0) {
-        const row = data[0];
-        updatedUser = {
-          id: row.id,
-          name: row.name,
-          email: row.email,
-          phone: row.phone,
-          wishlist: Array.isArray(row.wishlist) ? row.wishlist : [],
-          cart: Array.isArray(row.cart) ? row.cart : [],
-          created_at: row.created_at,
-        };
-      }
-    } catch (e) {
-      console.warn('Error resetting password in Supabase:', e);
-    }
+  if (!isSupabaseConfigured()) {
+    return { success: false, error: 'Password reset is unavailable — the studio database is not configured.' };
   }
 
-  // 2. Update in Local Storage cache
-  const localAccounts = getLocalCustomerAccounts();
-  const idx = localAccounts.findIndex(
-    (a) =>
-      a.email.toLowerCase() === query ||
-      (digitsOnly.length >= 7 && a.phone.replace(/[^0-9]/g, '').includes(digitsOnly))
-  );
-
-  if (idx >= 0) {
-    localAccounts[idx].password = newPassword.trim();
-    saveLocalCustomerAccounts(localAccounts);
-    if (!updatedUser) {
-      updatedUser = localAccounts[idx];
-    }
+  // Requires an active recovery session (set by Supabase after the reset link).
+  const { error } = await supabase.auth.updateUser({ password: newPassword.trim() });
+  if (error) {
+    return {
+      success: false,
+      error: 'Could not update your password. Please open the reset link from your email again.',
+    };
   }
 
-  // Remove temporary reset session
-  try {
-    sessionStorage.removeItem('shyam_pwd_reset_session');
-  } catch {}
-
-  if (updatedUser) {
-    setStoredCustomerAccount(updatedUser);
-    return { success: true, user: updatedUser };
-  }
-
-  return {
-    success: true,
-    error: undefined,
-  };
+  const user = await getCurrentCustomerAccount();
+  return { success: true, user: user || undefined };
 }
 
 /**
@@ -2265,106 +2264,71 @@ export async function loginCustomerAccount(
     return { success: false, error: 'Please enter your email/phone and password.' };
   }
 
-  // 1. Try Supabase
-  if (isSupabaseConfigured()) {
+  if (!isSupabaseConfigured()) {
+    return { success: false, error: 'Sign-in is unavailable — the studio database is not configured.' };
+  }
+
+  // Resolve the account email (mobile numbers are mapped via customer_accounts.phone)
+  let email = query.includes('@') ? query : '';
+  if (!email && rawPhone.length >= 7) {
     try {
-      let filter = `email.ilike.${query}`;
-      if (rawPhone.length >= 4) {
-        filter += `,phone.ilike.%${rawPhone}%`;
-      }
-
-      const { data: dbUsers, error } = await supabase
+      const { data, error } = await supabase
         .from('customer_accounts')
-        .select('*')
-        .or(filter);
-
-      if (!error && dbUsers && dbUsers.length > 0) {
-        const matched = dbUsers.find((u) => u.password === password);
-        if (matched) {
-          const userAccount: CustomerAccount = {
-            id: matched.id,
-            name: matched.name,
-            email: matched.email,
-            phone: matched.phone,
-            wishlist: Array.isArray(matched.wishlist) ? matched.wishlist : [],
-            cart: Array.isArray(matched.cart) ? matched.cart : [],
-            created_at: matched.created_at,
-          };
-          setStoredCustomerAccount(userAccount);
-          return { success: true, user: userAccount };
-        } else {
-          return { success: false, error: 'Incorrect password. Please try again.' };
-        }
+        .select('email')
+        .ilike('phone', `%${rawPhone}%`)
+        .limit(1);
+      if (!error && data && data.length > 0) {
+        email = (data[0] as any).email || '';
       }
-    } catch (err) {
-      console.warn('Supabase customer login error:', err);
+    } catch (e) {
+      console.warn('Phone → email lookup failed:', e);
     }
   }
 
-  // 2. Local fallback
-  const localAccounts = getLocalCustomerAccounts();
-  const matchedLocal = localAccounts.find(
-    (a) =>
-      (a.email.toLowerCase() === query || (rawPhone && a.phone.includes(rawPhone))) &&
-      a.password === password
-  );
-
-  if (matchedLocal) {
-    setStoredCustomerAccount(matchedLocal);
-    return { success: true, user: matchedLocal };
-  }
-
-  // Demo fallback for initial VIP client testing
-  if (
-    (query === 'client@shyamcreations.com' || query === '9363710342' || query.includes('shyam')) &&
-    password === 'shyam123'
-  ) {
-    const demoClient: CustomerAccount = {
-      id: 'cust-vip-sanya',
-      name: 'Sanya Alisha',
-      email: 'client@shyamcreations.com',
-      phone: '+91 9363710342',
-      wishlist: ['kundan-bridal-set-1'],
-      cart: [],
-      created_at: new Date().toISOString(),
+  if (!email) {
+    return {
+      success: false,
+      error: 'No account found with this email or phone number. Please check the details or create an account.',
     };
-    setStoredCustomerAccount(demoClient);
-    return { success: true, user: demoClient };
   }
 
+  const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error || !signInData.user) {
+    const msg = (error?.message || '').toLowerCase();
+    if (msg.includes('invalid')) {
+      return { success: false, error: 'Incorrect password. Please try again.' };
+    }
+    return { success: false, error: 'Could not sign you in. Please check your details or try again.' };
+  }
+
+  const user = await getCurrentCustomerAccount();
+  if (user) {
+    return { success: true, user };
+  }
+
+  // Profile lookup failed — return a minimal session-derived account
   return {
-    success: false,
-    error: 'Account not found or invalid credentials. Please check your details or create an account.',
+    success: true,
+    user: {
+      id: signInData.user.id,
+      name: (signInData.user.user_metadata as any)?.name || email.split('@')[0],
+      email,
+      phone: (signInData.user.user_metadata as any)?.phone || '',
+      wishlist: [],
+      cart: [],
+    },
   };
 }
 
 /**
- * Save updated wishlist in Supabase & localStorage
+ * Save updated wishlist in Supabase
  */
 export async function saveCustomerWishlistInDb(
   userIdOrEmail: string,
   wishlist: string[]
 ): Promise<boolean> {
   if (!userIdOrEmail) return false;
-
-  const current = getStoredCustomerAccount();
-  if (current) {
-    current.wishlist = wishlist;
-    setStoredCustomerAccount(current);
-  }
-
-  // Update in local accounts list
-  const localAccounts = getLocalCustomerAccounts();
-  const idx = localAccounts.findIndex(
-    (a) =>
-      a.id === userIdOrEmail ||
-      a.email.toLowerCase() === userIdOrEmail.toLowerCase() ||
-      (current && a.email.toLowerCase() === current.email.toLowerCase())
-  );
-  if (idx >= 0) {
-    localAccounts[idx].wishlist = wishlist;
-    saveLocalCustomerAccounts(localAccounts);
-  }
 
   if (isSupabaseConfigured()) {
     try {
@@ -2390,32 +2354,13 @@ export async function saveCustomerWishlistInDb(
 }
 
 /**
- * Save updated cart in Supabase & localStorage
+ * Save updated cart in Supabase
  */
 export async function saveCustomerCartInDb(
   userIdOrEmail: string,
   cart: CartItem[]
 ): Promise<boolean> {
   if (!userIdOrEmail) return false;
-
-  const current = getStoredCustomerAccount();
-  if (current) {
-    current.cart = cart;
-    setStoredCustomerAccount(current);
-  }
-
-  // Update in local accounts list
-  const localAccounts = getLocalCustomerAccounts();
-  const idx = localAccounts.findIndex(
-    (a) =>
-      a.id === userIdOrEmail ||
-      a.email.toLowerCase() === userIdOrEmail.toLowerCase() ||
-      (current && a.email.toLowerCase() === current.email.toLowerCase())
-  );
-  if (idx >= 0) {
-    localAccounts[idx].cart = cart;
-    saveLocalCustomerAccounts(localAccounts);
-  }
 
   if (isSupabaseConfigured()) {
     try {

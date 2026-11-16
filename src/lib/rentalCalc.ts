@@ -102,6 +102,16 @@ export function calcMixedBag(input: {
   };
 }
 
+/** Inclusive day count between two ISO dates (YYYY-MM-DD). Returns 0 when invalid/reversed. */
+export function rentalDaysBetween(fromIso: string, toIso: string): number {
+  if (!fromIso || !toIso) return 0;
+  const from = new Date(`${fromIso}T00:00:00`);
+  const to = new Date(`${toIso}T00:00:00`);
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
+  const diff = Math.round((to.getTime() - from.getTime()) / 86400000);
+  return diff < 0 ? 0 : diff + 1;
+}
+
 export const RENTAL_DAY_OPTIONS = [1, 2, 3, 5, 7, 10, 14] as const;
 export const SECURITY_DEPOSIT_NOTE =
   'Security deposit is fully refundable after safe return of the product in its original condition.';

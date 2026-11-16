@@ -193,7 +193,7 @@ CREATE TABLE IF NOT EXISTS public.jewellery_customers (
     product_name VARCHAR(255) NOT NULL,
     jewellery_id VARCHAR(100),
     item_price VARCHAR(50) NOT NULL DEFAULT '₹2,500',
-    shipping_fee VARCHAR(50) NOT NULL DEFAULT '₹50',
+    shipping_fee VARCHAR(50) NOT NULL DEFAULT '₹60',
     total_amount VARCHAR(50) NOT NULL DEFAULT '₹2,550',
     payment_method VARCHAR(100) DEFAULT 'Google Pay / UPI',
     upi_transaction_id VARCHAR(100) NOT NULL,

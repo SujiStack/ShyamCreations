@@ -8,6 +8,7 @@ import {
 } from '../lib/supabaseService';
 import { STUDIO_INFO } from '../data/mockData';
 import { formatDateDDMMYY, getDateBadgeParts } from '../lib/dateFormat';
+import { openPrintableReceipt } from '../lib/receipt';
 import { DateInputDDMMYY } from '../components/DateInputDDMMYY';
 
 // Canonical slots — must match HennaBookingView / CheckAvailabilityView exactly.
@@ -171,6 +172,11 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
         const userEmailLower = (customerUser.email || '').toLowerCase();
 
         const extraHenna = hennaBookings.filter((b) => {
+          // Skip jewellery orders that already have a merged card in the jewellery
+          // list — otherwise the same order renders twice with different fields.
+          if (b.type === 'jewellery' && jewelleryResults.some((r) => (r.ref || r.id) === (b.ref || b.id))) {
+            return false;
+          }
           const bPhone = (b.phone || '').replace(/[^0-9]/g, '');
           const bWa = (b.wa || '').replace(/[^0-9]/g, '');
           const bName = (b.clientName || '').toLowerCase();
@@ -220,10 +226,12 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
         if (hennaResults.length === 0 && digitsOnly.length >= 4) {
           hennaResults = hennaBookings.filter(
             (b) =>
-              (b.phone && b.phone.includes(digitsOnly)) ||
-              (b.wa && b.wa.includes(digitsOnly)) ||
-              (b.ref && b.ref.toLowerCase().includes(cleanLower)) ||
-              (b.clientName && b.clientName.toLowerCase().includes(cleanLower))
+              // Jewellery orders are already covered by the jewellery results
+              !(b.type === 'jewellery' && jewelleryResults.some((r) => (r.ref || r.id) === (b.ref || b.id))) &&
+              ((b.phone && b.phone.includes(digitsOnly)) ||
+                (b.wa && b.wa.includes(digitsOnly)) ||
+                (b.ref && b.ref.toLowerCase().includes(cleanLower)) ||
+                (b.clientName && b.clientName.toLowerCase().includes(cleanLower)))
           );
         }
 
@@ -718,9 +726,17 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
 
             const badge = getDateBadgeParts(getBookingDate(booking));
             const isPaid = paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed';
+            const jb = booking as JewelleryRental;
+            // Rentals only: hide reschedule on courier-delivery purchase orders.
+            const isJewelleryRental = type !== 'jewellery'
+              || jb.bookingType === 'Rental'
+              || (!!jb.depositAmount && jb.depositAmount !== '₹0')
+              || /day/i.test(jb.dailyRate || '');
             const canReschedule =
               isReschedulableStatus(status) &&
-              !String((booking as JewelleryRental).productName || '').includes('(Express Dispatch)');
+              isJewelleryRental &&
+              jb.bookingType !== 'Purchase' &&
+              !String(jb.productName || '').includes('(Express Dispatch)');
             const rawTime = getBookingTime(booking) || '—';
             const slotLabel = rawTime.includes('Morning') ? 'Morning Slot' : rawTime.includes('Evening') ? 'Evening Slot' : rawTime;
             return (
@@ -924,7 +940,57 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                   </p>
                 </section>
 
-                <div className="flex justify-end gap-2 border-t border-[var(--sc-border)] pt-4">
+                <div className="flex flex-wrap justify-between items-center gap-2 border-t border-[var(--sc-border)] pt-4">
+                  <button
+                    onClick={() => {
+                      const anyBooking = booking as any;
+                      const address = isHenna
+                        ? ((booking as HennaBooking).deliveryAddress || (booking as HennaBooking).location || 'Studio / Client Venue')
+                        : ((booking as JewelleryRental).deliveryAddress || 'Studio Pickup');
+                      const jewellerySummary = [
+                        ...(anyBooking.itemPrice ? [{ label: 'Item Price', value: anyBooking.itemPrice }] : []),
+                        ...(anyBooking.shippingFee ? [{ label: 'Shipping', value: anyBooking.shippingFee }] : []),
+                        ...((booking as JewelleryRental).depositAmount && (booking as JewelleryRental).depositAmount !== '₹0'
+                          ? [{ label: (booking as JewelleryRental).status === 'Returned' ? 'Security Deposit (refunded)' : 'Security Deposit (refundable)', value: (booking as JewelleryRental).depositAmount! }]
+                          : []),
+                        ...((booking as JewelleryRental).returnDue
+                          ? [{
+                              label: (booking as JewelleryRental).bookingType === 'Purchase' ? 'Status' : 'Return Due',
+                              value: (booking as JewelleryRental).bookingType === 'Purchase'
+                                ? 'Order Placed'
+                                : (formatDate((booking as JewelleryRental).returnDue!) || (booking as JewelleryRental).returnDue!),
+                            }]
+                          : []),
+                      ];
+                      const hennaSummary = [
+                        { label: 'Time Slot', value: (booking as HennaBooking).timeSlot || '—' },
+                        { label: 'Payment Status', value: getPaymentDisplay(booking).label },
+                        ...((booking as HennaBooking).totalPrice ? [{ label: 'Total Service Price', value: (booking as HennaBooking).totalPrice! }] : []),
+                      ];
+                      openPrintableReceipt({
+                        title: isHenna ? 'Mehandi Booking Receipt' : 'Jewellery Order Receipt',
+                        ref: getBookingRef(booking),
+                        date: formatDate(getBookingDate(booking)) || getBookingDate(booking) || '',
+                        customerName: getBookingClient(booking),
+                        customerPhone: anyBooking.phone || anyBooking.wa || '',
+                        customerEmail: isHenna ? (booking as HennaBooking).clientEmail : anyBooking.email || '',
+                        address,
+                        items: [{ label: getBookingName(booking), value: getActualPrice(booking, isHenna) }],
+                        summary: isHenna ? hennaSummary : jewellerySummary,
+                        totalLabel: isHenna ? 'Amount Paid' : 'Total Paid',
+                        totalAmount: getActualPrice(booking, isHenna),
+                        paymentMethod: anyBooking.paymentMethod,
+                        paymentStatus: anyBooking.paymentStatus,
+                        transactionId: anyBooking.transactionId,
+                        notes: anyBooking.specialRequests || anyBooking.notes || undefined,
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--sc-emerald-dark)] bg-[var(--sc-emerald-deep)] px-4 py-2.5 text-sm font-bold text-[var(--sc-emerald-lux)] transition-colors hover:bg-[var(--sc-emerald-dark)]"
+                  >
+                    <span className="material-symbols-outlined text-base leading-none">receipt_long</span>
+                    Download Receipt
+                  </button>
+                  <div className="flex gap-2">
                   <button
                     onClick={() => setSelectedBooking(null)}
                     className="rounded-xl border border-[var(--sc-border)] px-4 py-2.5 text-sm font-semibold text-[var(--sc-text)] transition-colors hover:bg-[var(--sc-accent-warm)]"
@@ -943,6 +1009,7 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                       WhatsApp Support
                     </a>
                   )}
+                  </div>
                 </div>
               </div>
             </div>

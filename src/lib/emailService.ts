@@ -1,4 +1,5 @@
 import { formatDateDDMMYY } from './dateFormat';
+import { ReceiptData, buildReceiptHtml, receiptPlainText, utf8ToBase64 } from './receipt';
 
 export interface BookingEmailParams {
   ref: string;
@@ -17,6 +18,8 @@ export interface BookingEmailParams {
   paymentAmount?: string;
   paymentMethod?: string;
   transactionId?: string;
+  /** Optional receipt — attached to the confirmation email as a base64 HTML file */
+  receipt?: ReceiptData;
 }
 
 export interface EmailSendResult {
@@ -72,6 +75,44 @@ export async function sendBookingConfirmationEmails(
     console.warn('[EmailJS] Init warning:', initErr);
   }
 
+  // Build receipt attachments (HTML + PDF). PDF generation is best-effort —
+  // if it fails (e.g. no renderer available), the HTML receipt still goes out.
+  let receiptParams: Record<string, string> = {};
+  if (booking.receipt) {
+    const html = buildReceiptHtml(booking.receipt);
+    const base64 = utf8ToBase64(html);
+    const text = receiptPlainText(booking.receipt);
+    const htmlFilename = `Shyam-Creations-Receipt-${booking.receipt.ref}.html`;
+    receiptParams = {
+      receipt: `data:text/html;base64,${base64}`,
+      receipt_attachment: `data:text/html;base64,${base64}`,
+      receipt_base64: base64,
+      receipt_html: html,
+      receipt_filename: htmlFilename,
+      receipt_file_name: htmlFilename,
+      receipt_content_type: 'text/html',
+      receipt_ref: booking.receipt.ref,
+      receipt_text: text,
+      receipt_summary: text,
+    };
+    try {
+      const { generateReceiptPdf } = await import('./receiptPdf');
+      const pdf = await generateReceiptPdf(booking.receipt);
+      receiptParams = {
+        ...receiptParams,
+        receipt_pdf: pdf.dataUri,
+        receipt_pdf_base64: pdf.base64,
+        receipt_pdf_filename: pdf.filename,
+        receipt_pdf_file_name: pdf.filename,
+        receipt_pdf_content_type: 'application/pdf',
+        receipt_pdf_ref: booking.receipt.ref,
+      };
+      console.info(`[EmailJS] PDF receipt generated (${Math.round(pdf.base64.length / 1024)} KB base64): ${pdf.filename}`);
+    } catch (pdfErr) {
+      console.warn('[EmailJS] PDF receipt generation failed — sending with HTML attachment only.', pdfErr);
+    }
+  }
+
   // Base parameters shared between templates
   const baseParams = {
     booking_ref: booking.ref,
@@ -125,6 +166,13 @@ export async function sendBookingConfirmationEmails(
 
     studio_name: 'Shyam Creations Studio',
     studio_phone: '+91 9363710342',
+
+    // Receipt attachments (HTML + PDF) — Variable Attachments in the EmailJS template.
+    // Template setup: Attachments → Add Attachment → Variable Attachment.
+    //   1) parameter "receipt"     — content type "text/html",    filename "{{receipt_filename}}"
+    //   2) parameter "receipt_pdf" — content type "application/pdf", filename "{{receipt_pdf_filename}}"
+    // Plain-text summary is also passed for inline use via {{receipt_text}}.
+    ...receiptParams,
   };
 
   // Dispatch Customer Confirmation Email only

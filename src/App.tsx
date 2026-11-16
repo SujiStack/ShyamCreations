@@ -38,30 +38,14 @@ import {
   saveCustomerCartInDb,
   decrementProductStockInDb,
   logoutCustomerAccount,
+  getCurrentCustomerAccount,
 } from './lib/supabaseService';
+import { supabase } from './lib/supabase';
 
 export function App() {
   const [currentView, setCurrentView] = useState<ViewMode>('home');
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategoryKey>('mehendi');
-  const [products, setProducts] = useState<Product[]>(() => {
-    // Only use DB-sourced data; never fall back to mock data
-    try {
-      const cached = localStorage.getItem('shyam_jewellery_products');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const dbLike = parsed.filter((p: any) => !INITIAL_PRODUCTS.some(mock => mock.id === p.id));
-          if (dbLike.length > 0) {
-            return dbLike;
-          }
-        }
-      }                                    
-
-    } catch (e) {
-      console.warn('Failed to parse cached jewellery products:', e);
-    }
-    return [];
-  });
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [selectedProductId, setSelectedProductId] = useState<string>(
     products[0]?.id || (INITIAL_PRODUCTS[0]?.id || 'kundan-bridal-set-1')
   );
@@ -69,69 +53,18 @@ export function App() {
   const [jewelleryRentals, setJewelleryRentals] = useState<JewelleryRental[]>(
     INITIAL_JEWELLERY_RENTALS
   );
-  const [disabledSlots, setDisabledSlots] = useState<DisabledSlot[]>(() => {
-    try {
-      const stored = localStorage.getItem('shyam_disabled_slots');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [disabledSlots, setDisabledSlots] = useState<DisabledSlot[]>([]);
 
-  // Customer Authentication & Account State
-  const [customerUser, setCustomerUser] = useState<CustomerAccount | null>(() => {
-    try {
-      const stored = localStorage.getItem('shyam_customer_account');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  // Customer Authentication & Account State — session restored from
+  // Supabase Auth on mount (no app data in localStorage)
+  const [customerUser, setCustomerUser] = useState<CustomerAccount | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [pendingAuthAction, setPendingAuthAction] = useState<PendingAuthAction | null>(null);
 
-  // Cart & Wishlist State (Only visible & stored when customer is signed in)
-  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
-    try {
-      const storedAccount = localStorage.getItem('shyam_customer_account');
-      if (!storedAccount) return [];
-      const stored = localStorage.getItem('shyam_jewellery_cart');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-      const parsedAccount = JSON.parse(storedAccount);
-      if (parsedAccount?.cart && Array.isArray(parsedAccount.cart)) {
-        return parsedAccount.cart;
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  });
+  // Cart & Wishlist State — hydrated from the signed-in account profile (DB)
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-  const [wishlistIds, setWishlistIds] = useState<string[]>(() => {
-    try {
-      const storedAccount = localStorage.getItem('shyam_customer_account');
-      if (!storedAccount) return [];
-      const stored = localStorage.getItem('shyam_jewellery_wishlist');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-      const parsedAccount = JSON.parse(storedAccount);
-      if (parsedAccount?.wishlist && Array.isArray(parsedAccount.wishlist)) {
-        return parsedAccount.wishlist;
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  });
+  const [wishlistIds, setWishlistIds] = useState<string[]>([]);
 
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState<boolean>(false);
   const [isWishlistDrawerOpen, setIsWishlistDrawerOpen] = useState<boolean>(false);
@@ -146,115 +79,65 @@ export function App() {
     if (category) {
       setSelectedCategory(category);
     }
-    try {
-      localStorage.removeItem('shyam_user_mobile');
-    } catch {
-      // ignore
-    }
      window.scrollTo({ top: 0, behavior: 'smooth' });
    };
 
-   // Sync Customer Cart & Wishlist to localStorage and DB (Only while user is signed in)
+   // Restore the customer session from Supabase Auth on mount and keep it
+   // in sync (sign-in / sign-out in other tabs too). No app data is kept in
+   // localStorage — everything comes from Supabase.
   useEffect(() => {
-    if (customerUser) {
-      try {
-        localStorage.setItem('shyam_jewellery_cart', JSON.stringify(cartItems));
-      } catch {
-        // ignore
+    let mounted = true;
+
+    const syncCustomerFromSession = async () => {
+      const account = await getCurrentCustomerAccount();
+      if (!mounted) return;
+      setCustomerUser(account);
+      setCartItems(account?.cart || []);
+      setWishlistIds(account?.wishlist || []);
+    };
+
+    syncCustomerFromSession();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        if (mounted) {
+          setCustomerUser(null);
+          setCartItems([]);
+          setWishlistIds([]);
+        }
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        syncCustomerFromSession();
+      } else if (event === 'PASSWORD_RECOVERY') {
+        if (mounted) setIsAuthModalOpen(true);
       }
-      if (customerUser.email) {
-        saveCustomerCartInDb(customerUser.email, cartItems);
-      }
-    } else {
-      try {
-        localStorage.removeItem('shyam_jewellery_cart');
-      } catch {
-        // ignore
-      }
+    });
+
+    return () => {
+      mounted = false;
+      sub?.subscription?.unsubscribe();
+    };
+  }, []);
+
+   // Sync Customer Cart & Wishlist to Supabase (Only while user is signed in)
+  useEffect(() => {
+    if (customerUser?.email) {
+      saveCustomerCartInDb(customerUser.email, cartItems);
     }
   }, [cartItems, customerUser]);
 
   useEffect(() => {
-    if (customerUser) {
-      try {
-        localStorage.setItem('shyam_jewellery_wishlist', JSON.stringify(wishlistIds));
-      } catch {
-        // ignore
-      }
-      if (customerUser.email) {
-        saveCustomerWishlistInDb(customerUser.email, wishlistIds);
-      }
-    } else {
-      try {
-        localStorage.removeItem('shyam_jewellery_wishlist');
-      } catch {
-        // ignore
-      }
+    if (customerUser?.email) {
+      saveCustomerWishlistInDb(customerUser.email, wishlistIds);
     }
   }, [wishlistIds, customerUser]);
 
-  // Initial Load from Supabase Database
+   // Initial Load from Supabase Database (always — no local fallback)
   useEffect(() => {
-    // 1. Load local bookings from localStorage
-    try {
-      const stored = localStorage.getItem('shyam_henna_bookings');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setHennaBookings((prev) => {
-            const existingRefs = new Set(prev.map((b) => b.ref));
-            const newFromLocal = parsed.filter((b: HennaBooking) => !existingRefs.has(b.ref));
-            return [...newFromLocal, ...prev];
-          });
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to parse localStorage bookings:', e);
-    }
-
-    // 2. Load from Supabase if configured
     async function loadDb() {
       if (isSupabaseConfigured()) {
         const dbBookings = await fetchSupabaseBookings();
-        if (dbBookings && dbBookings.length > 0) {
-          setHennaBookings((prev) => {
-            const existingRefs = new Set(prev.map((b) => b.ref));
-            const newFromDb = dbBookings.filter((b) => !existingRefs.has(b.ref));
-            return [...newFromDb, ...prev];
-          });
-        }
-
-        // 3. Sync: push local bookings that are missing from the DB.
-        //    Each ref is remembered in 'shyam_henna_synced_refs' after a
-        //    successful push, so rows deleted from the DB later will NOT be
-        //    re-pushed by the sync on future refreshes.
-        try {
-          const storedLocal = localStorage.getItem('shyam_henna_bookings');
-          if (storedLocal) {
-            const localList = JSON.parse(storedLocal);
-            if (Array.isArray(localList) && localList.length > 0) {
-              const dbRefs = new Set((dbBookings || []).map((b) => b.ref));
-              let syncedRefs = new Set<string>();
-              try {
-                const rawSynced = localStorage.getItem('shyam_henna_synced_refs');
-                if (rawSynced) syncedRefs = new Set(JSON.parse(rawSynced));
-              } catch {
-                // ignore parse errors
-              }
-              const missing = localList.filter(
-                (b: HennaBooking) => b.ref && !dbRefs.has(b.ref) && !syncedRefs.has(b.ref)
-              );
-              for (const b of missing) {
-                const res = await insertSupabaseBooking(b, { phone: b.phone, wa: b.wa });
-                if (res.success) syncedRefs.add(b.ref);
-              }
-              if (missing.length > 0) {
-                localStorage.setItem('shyam_henna_synced_refs', JSON.stringify(Array.from(syncedRefs)));
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Local bookings → DB sync failed:', e);
+        if (dbBookings) {
+          setHennaBookings(dbBookings);
         }
 
         const dbJewellery = await fetchSupabaseJewellery();
@@ -262,20 +145,13 @@ export function App() {
           setProducts(dbJewellery);
         }
 
-        // Disabled slots from DB — previously only localStorage was loaded,
-        // so reschedule/booking slot checks missed studio-disabled slots
-        // set on another device. Merge DB rows (dedup by date+slot).
         try {
           const dbSlots = await fetchSupabaseDisabledSlots();
           const mapped: DisabledSlot[] = (dbSlots || [])
             .filter((s: any) => s?.date && s?.slot)
             .map((s: any) => ({ date: s.date, timeSlot: s.slot, reason: s.status && s.status !== 'disabled' ? s.status : undefined }));
           if (mapped.length > 0) {
-            setDisabledSlots((prev) => {
-              const seen = new Set(prev.map((s) => `${s.date}|${s.timeSlot}`));
-              const fresh = mapped.filter((s) => !seen.has(`${s.date}|${s.timeSlot}`));
-              return [...prev, ...fresh];
-            });
+            setDisabledSlots(mapped);
           }
         } catch (e) {
           console.warn('Failed to load disabled slots from DB:', e);
@@ -292,7 +168,7 @@ export function App() {
         setProducts(dbJewellery);
       }
       const dbBookings = await fetchSupabaseBookings();
-      if (dbBookings && dbBookings.length > 0) {
+      if (dbBookings) {
         setHennaBookings(dbBookings);
       }
     }
@@ -307,24 +183,9 @@ export function App() {
   const handleLoginSuccess = (account: CustomerAccount, pendingActionOverride?: PendingAuthAction) => {
     const actionToUse = pendingActionOverride || pendingAuthAction;
     setCustomerUser(account);
-    try {
-      localStorage.setItem('shyam_customer_account', JSON.stringify(account));
-    } catch {
-      // ignore
-    }
-
-    // Merge cart and wishlist from account if present
-    if (account.cart && Array.isArray(account.cart) && account.cart.length > 0) {
-      setCartItems((prev) => {
-        const existingIds = new Set(prev.map((i) => i.productId));
-        const newItems = account.cart!.filter((i) => !existingIds.has(i.productId));
-        return [...prev, ...newItems];
-      });
-    }
-
-    if (account.wishlist && Array.isArray(account.wishlist) && account.wishlist.length > 0) {
-      setWishlistIds((prev) => Array.from(new Set([...prev, ...account.wishlist!])));
-    }
+    // Hydrate cart & wishlist from the account profile (DB)
+    setCartItems(account.cart || []);
+    setWishlistIds(account.wishlist || []);
 
     // Set Welcome Toast on landing page
     setLoginWelcomeToast(`✨ Welcome, ${account.name}! Logged in to Shyam Creations.`);
@@ -356,13 +217,6 @@ export function App() {
     setCustomerUser(null);
     setCartItems([]);
     setWishlistIds([]);
-    try {
-      localStorage.removeItem('shyam_customer_account');
-      localStorage.removeItem('shyam_jewellery_cart');
-      localStorage.removeItem('shyam_jewellery_wishlist');
-    } catch {
-      // ignore
-    }
     setIsWishlistDrawerOpen(false);
     setIsCartDrawerOpen(false);
     setIsCartCheckoutOpen(false);
@@ -425,12 +279,10 @@ export function App() {
 
   const handleClearCart = () => {
     setCartItems([]);
-    // Persist immediately (synchronously) so the cart stays cleared even if
-    // the tab is closed before React flushes the effect-based sync.
-    try {
-      localStorage.setItem('shyam_jewellery_cart', '[]');
-    } catch {
-      // ignore
+    // Keep the signed-in account profile in sync (cart stored on the DB row)
+    setCustomerUser((prev) => (prev ? { ...prev, cart: [] } : prev));
+    if (customerUser?.email) {
+      saveCustomerCartInDb(customerUser.email, []);
     }
   };
 
@@ -493,8 +345,7 @@ export function App() {
   ): boolean => {
     // Match by ref OR id: searched (fetched) copies and App copies of the same
     // booking can carry different local ids, so id-only matching silently
-    // missed. Persist to localStorage too, otherwise a refresh reverted the
-    // reschedule back to the cached old date.
+    // missed. The DB is updated via rescheduleSupabaseBooking() by the caller.
     const apply = (b: HennaBooking): HennaBooking =>
       b.id === idOrRef || b.ref === idOrRef
         ? {
@@ -507,17 +358,6 @@ export function App() {
         : b;
 
     setHennaBookings((prev) => prev.map(apply));
-    try {
-      const stored = localStorage.getItem('shyam_henna_bookings');
-      if (stored) {
-        const list = JSON.parse(stored);
-        if (Array.isArray(list)) {
-          localStorage.setItem('shyam_henna_bookings', JSON.stringify(list.map(apply)));
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to persist reschedule to localStorage:', e);
-    }
     return true;
   };
 
@@ -542,16 +382,7 @@ export function App() {
     // 1. React State
     setHennaBookings((prev) => [newBooking, ...prev]);
 
-    // 2. Save locally in browser
-    try {
-      const stored = localStorage.getItem('shyam_henna_bookings');
-      const list = stored ? JSON.parse(stored) : [];
-      localStorage.setItem('shyam_henna_bookings', JSON.stringify([newBooking, ...list]));
-    } catch (e) {
-      console.warn('LocalStorage save failed:', e);
-    }
-
-    // 3. Save in Supabase
+    // 2. Save in Supabase
     const res = await insertSupabaseBooking(newBooking, {
       phone: newBooking.phone,
       wa: newBooking.wa,
@@ -580,11 +411,6 @@ export function App() {
 
   const handleUpdateDisabledSlots = (slots: DisabledSlot[]) => {
     setDisabledSlots(slots);
-    try {
-      localStorage.setItem('shyam_disabled_slots', JSON.stringify(slots));
-    } catch (e) {
-      console.warn('Failed to save disabled slots:', e);
-    }
   };
 
   const handleAddProduct = (newProd: Product) => {
@@ -603,6 +429,21 @@ export function App() {
 
   const wishlistProducts = products.filter((p) => wishlistIds.includes(p.id));
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  // The studio requires the Supabase backend for all bookings & orders —
+  // without it, nothing works, so fail loudly instead of silently writing to localStorage.
+  if (!isSupabaseConfigured()) {
+    return (
+      <div className="min-h-screen bg-[var(--sc-bg)] flex flex-col items-center justify-center px-6 text-center">
+        <span className="material-symbols-outlined text-6xl text-[var(--sc-emerald)] mb-4">cloud_off</span>
+        <h1 className="font-serif text-3xl font-bold text-[var(--sc-text)] mb-2">Studio Booking is Temporarily Unavailable</h1>
+        <p className="text-sm text-[var(--sc-text-dim)] max-w-md leading-relaxed">
+          The Shyam Creations booking system could not reach its database. Please check your internet connection or try again shortly.
+          For immediate assistance, WhatsApp us at <a className="underline font-semibold" href="https://wa.me/919363710342">+91 93637 10342</a>.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--sc-bg)] flex flex-col font-sans-body text-[var(--sc-text)]">

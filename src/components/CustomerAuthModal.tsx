@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CustomerAccount, PendingAuthAction } from '../types';
+import { supabase } from '../lib/supabase';
 import {
   signupCustomerAccount,
   loginCustomerAccount,
-  checkCustomerExists,
   requestCustomerPasswordReset,
   resetCustomerPassword,
 } from '../lib/supabaseService';
@@ -39,9 +39,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
   // Forgot / Reset Password State
   const [resetIdentifier, setResetIdentifier] = useState('');
-  const [enteredOtp, setEnteredOtp] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState<string | null>(null);
-  const [resetAccountName, setResetAccountName] = useState<string>('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -50,6 +47,18 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Switch to "Set New Password" mode when the customer opens the recovery link
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setAuthMode('reset_password');
+        setErrorMessage(null);
+        setSuccessMessage(null);
+      }
+    });
+    return () => sub?.subscription?.unsubscribe();
+  }, []);
 
   if (!isOpen) return null;
 
@@ -113,26 +122,11 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       return;
     }
     if (!cleanPass || cleanPass.length < 4) {
-      setErrorMessage('Password should be at least 4 characters.');
+      setErrorMessage('Password should be at least 6 characters.');
       return;
     }
 
     setLoading(true);
-    
-    // Proactive duplication check for both email and phone
-    const emailCheck = await checkCustomerExists(cleanEmail);
-    if (emailCheck.exists) {
-      setLoading(false);
-      setErrorMessage('An account with this email already exists. Please sign in or reset your password.');
-      return;
-    }
-
-    const phoneCheck = await checkCustomerExists(cleanPhone);
-    if (phoneCheck.exists) {
-      setLoading(false);
-      setErrorMessage('An account with this mobile phone number already exists. Please sign in or reset your password.');
-      return;
-    }
 
     const res = await signupCustomerAccount({
       name: cleanName,
@@ -143,14 +137,22 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     setLoading(false);
 
     if (res.success && res.user) {
+      const newUser = res.user;
       setName('');
       setEmail('');
       setPhone('');
       setSignupPassword('');
-      setEmailOrPhone(cleanEmail);
-      setAuthMode('signin');
-      setSuccessMessage(`Account registered successfully! Please sign in with your credentials.`);
+      setSuccessMessage(`Account created! Welcome, ${newUser.name}!`);
       setErrorMessage(null);
+
+      setTimeout(() => {
+        if (onLoginSuccess) {
+          onLoginSuccess(newUser, pendingAction || undefined);
+        } else if (onSuccess) {
+          onSuccess(newUser, pendingAction || undefined);
+        }
+        onClose();
+      }, 800);
     } else {
       setErrorMessage(res.error || 'Failed to create account. Please try again.');
     }
@@ -171,11 +173,10 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     const res = await requestCustomerPasswordReset(target);
     setLoading(false);
 
-    if (res.success && res.otp) {
-      setGeneratedOtp(res.otp);
-      setResetAccountName(res.accountName || 'Client');
-      setAuthMode('reset_password');
-      setSuccessMessage(`Verification OTP generated! Use code ${res.otp} to verify your account.`);
+    if (res.success) {
+      setResetIdentifier('');
+      setErrorMessage(null);
+      setSuccessMessage(`If an account exists for that contact, a password reset link has been sent to the registered email. Open the link on this device to set a new password.`);
     } else {
       setErrorMessage(res.error || 'No account found with this email or mobile number. Please sign up instead.');
     }
@@ -186,18 +187,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    if (!enteredOtp.trim()) {
-      setErrorMessage('Please enter the 6-digit verification code.');
-      return;
-    }
-
-    if (generatedOtp && enteredOtp.trim() !== generatedOtp.trim()) {
-      setErrorMessage('Invalid OTP code. Please check and re-enter the 6-digit code.');
-      return;
-    }
-
-    if (!newPassword || newPassword.length < 4) {
-      setErrorMessage('New password must be at least 4 characters long.');
+    if (!newPassword || newPassword.length < 6) {
+      setErrorMessage('New password must be at least 6 characters long.');
       return;
     }
 
@@ -212,10 +203,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
     if (res.success) {
       setSuccessMessage('Password changed successfully! You can now log in with your new password.');
-      setEmailOrPhone(resetIdentifier);
       setPassword('');
-      setGeneratedOtp(null);
-      setEnteredOtp('');
       setNewPassword('');
       setConfirmPassword('');
       setTimeout(() => {
@@ -224,13 +212,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     } else {
       setErrorMessage(res.error || 'Failed to update password. Please try again.');
     }
-  };
-
-  const fillDemoCredentials = () => {
-    setAuthMode('signin');
-    setEmailOrPhone('client@shyamcreations.com');
-    setPassword('shyam123');
-    setErrorMessage(null);
   };
 
   return (
@@ -259,7 +240,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   ? 'Create Client Account'
                   : authMode === 'forgot_password'
                   ? 'Reset Account Password'
-                  : 'Verify OTP & Set New Password'}
+                  : 'Set New Password'}
               </h3>
             </div>
             <p className="text-xs text-[#a39c91] mt-1">
@@ -272,7 +253,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 : pendingAction?.action === 'wishlist'
                 ? 'Sign in to save bridal jewellery to your personal wishlist'
                 : authMode === 'forgot_password' || authMode === 'reset_password'
-                ? 'Free email & in-app OTP verification to reset your studio password'
+                ? 'A secure password reset link is emailed to you via Supabase Auth'
                 : 'Access member-only pricing, jewellery rentals, and appointment tracking'}
             </p>
           </div>
@@ -423,16 +404,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   </>
                 )}
               </button>
-
-              <div className="pt-2 text-center">
-                <button
-                  type="button"
-                  onClick={fillDemoCredentials}
-                  className="text-[11px] text-[#E0B45F] hover:underline cursor-pointer"
-                >
-                  ⚡ Quick Demo Login (Sanya Alisha / VIP Client)
-                </button>
-              </div>
             </form>
           )}
 
@@ -512,7 +483,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     id="input-signup-password"
                     type={showSignupPassword ? 'text' : 'password'}
                     required
-                    placeholder="Create a password (min 4 characters)"
+                    placeholder="Create a password (min 6 characters)"
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
                     className="w-full pl-9 pr-10 py-2 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
@@ -531,7 +502,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
               <div className="p-2.5 bg-[var(--sc-surface-alt-card)] rounded-xl border border-[#2f342f] text-[11px] text-[#a39c91] flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#E0B45F] text-sm">verified_user</span>
-                <span>Free Email OTP & Database Verification included</span>
+                <span>Secure Supabase Auth — passwords are never stored in plain text</span>
               </div>
 
               <button
@@ -580,10 +551,10 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               <div className="p-3 bg-[var(--sc-surface-alt-card)] rounded-xl border border-[var(--sc-border-dark)] text-xs text-[#a39c91] space-y-1">
                 <div className="flex items-center gap-1.5 text-[#f3ebd9] font-semibold text-[11px]">
                   <span className="material-symbols-outlined text-[#E0B45F] text-sm">mark_email_read</span>
-                  <span>Instant Verification Code</span>
+                  <span>Password Recovery Email</span>
                 </div>
                 <p className="text-[10px] text-[#8A7F72] leading-relaxed">
-                  We will generate a 100% free 6-digit OTP code to verify your identity and immediately allow you to set a new password.
+                  We'll send a secure recovery link to the email linked to your account. Open it on this device to set a new password.
                 </p>
               </div>
 
@@ -601,7 +572,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 ) : (
                   <>
                     <span className="material-symbols-outlined text-base">key</span>
-                    <span>Send Verification Code</span>
+                    <span>Send Password Reset Link</span>
                   </>
                 )}
               </button>
@@ -625,43 +596,14 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
           {authMode === 'reset_password' && (
             <form onSubmit={handleResetPassword} className="space-y-3.5">
-              {generatedOtp && (
-                <div className="p-3 bg-[#2d291e] border border-[#E0B45F]/60 rounded-xl text-center">
-                  <div className="text-[10px] text-[#E0B45F] uppercase font-bold tracking-widest">
-                    Verification OTP for {resetAccountName}
-                  </div>
-                  <div className="text-2xl font-mono font-bold tracking-widest text-[#f3ebd9] my-1">
-                    {generatedOtp}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEnteredOtp(generatedOtp)}
-                    className="text-[11px] text-[#E0B45F] underline cursor-pointer hover:text-white"
-                  >
-                    Click to Auto-fill OTP
-                  </button>
+              <div className="p-3 bg-[var(--sc-surface-alt-card)] rounded-xl border border-[var(--sc-border-dark)] text-xs text-[#a39c91] space-y-1">
+                <div className="flex items-center gap-1.5 text-[#f3ebd9] font-semibold text-[11px]">
+                  <span className="material-symbols-outlined text-[#E0B45F] text-sm">mark_email_read</span>
+                  <span>Email Recovery Link Opened</span>
                 </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-[#ded8ce] mb-1">
-                  Enter 6-Digit OTP Code
-                </label>
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-2.5 text-[#8A7F72] text-base">
-                    pin
-                  </span>
-                  <input
-                    id="input-entered-otp"
-                    type="text"
-                    required
-                    maxLength={6}
-                    placeholder="Enter 6-digit OTP code"
-                    value={enteredOtp}
-                    onChange={(e) => setEnteredOtp(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-xl text-xs font-mono text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
-                  />
-                </div>
+                <p className="text-[10px] text-[#8A7F72] leading-relaxed">
+                  You arrived here from the Supabase Auth recovery email. Set your new password below to finish.
+                </p>
               </div>
 
               <div>
@@ -676,7 +618,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     id="input-new-password"
                     type={showNewPassword ? 'text' : 'password'}
                     required
-                    placeholder="Enter new password (min 4 characters)"
+                    placeholder="Enter new password (min 6 characters)"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="w-full pl-9 pr-10 py-2 bg-[var(--sc-surface-alt-card)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"

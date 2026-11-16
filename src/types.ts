@@ -93,6 +93,8 @@ export interface JewelleryRental {
   deliveryAddress?: string;
   trackingNumber?: string;
   trackingUrl?: string;
+  /** 'Rental' | 'Purchase' — set for orders fetched from jewellery_bookings */
+  bookingType?: string;
 }
 
 export interface VisionaryArtist {

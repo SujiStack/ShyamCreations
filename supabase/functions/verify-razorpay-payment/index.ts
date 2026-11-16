@@ -67,6 +67,10 @@ serve(async (req) => {
       jewelleryId,
       deliveryAddress,
       itemsToDecrement,
+      shippingFee,
+      startDate,
+      endDate,
+      durationDays,
     } = body;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !bookingRef) {
@@ -201,13 +205,13 @@ serve(async (req) => {
               product_name: serviceOrProductName || "Jewellery Order",
               jewellery_id: jewelleryId || "online-order",
               item_price: fmtINR(amount),
-              shipping_fee: "₹50",
               total_amount: fmtINR(amount),
               payment_method: "Razorpay (UPI / Card / NetBanking)",
               upi_transaction_id: razorpay_payment_id,
               payment_status: "Paid",
               order_status: "Confirmed",
               notes: "Auto-registered by Razorpay payment verification",
+              ...(shippingFee ? { shipping_fee: shippingFee } : {}),
             },
           ]);
         }
@@ -224,6 +228,9 @@ serve(async (req) => {
               payment_status: "Paid",
               status: "Confirmed",
               transaction_id: razorpay_payment_id,
+              ...(startDate ? { start_date: startDate } : {}),
+              ...(endDate ? { end_date: endDate } : {}),
+              ...(durationDays ? { duration_days: durationDays } : {}),
             })
             .eq("booking_ref", bookingRef);
         } else {
@@ -240,6 +247,9 @@ serve(async (req) => {
               payment_method: "Razorpay (UPI / Card / NetBanking)",
               transaction_id: razorpay_payment_id,
               status: "Confirmed",
+              ...(startDate ? { start_date: startDate } : {}),
+              ...(endDate ? { end_date: endDate } : {}),
+              ...(durationDays ? { duration_days: durationDays } : {}),
               notes: "Auto-registered by Razorpay payment verification",
             },
           ]);

@@ -22,14 +22,9 @@ import {
 } from '../lib/supabaseService';
 import {
   getSupabaseCredentials,
-  saveCustomSupabaseCredentials,
 } from '../lib/supabase';
 import { formatDateDDMMYY } from '../lib/dateFormat';
 import { DateInputDDMMYY } from '../components/DateInputDDMMYY';
-import {
-  getRazorpayKeyId,
-  saveCustomRazorpayKeyId,
-} from '../lib/razorpay';
 
 interface AdminPortalViewProps {
   products: Product[];
@@ -123,22 +118,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [copiedBookingsSql, setCopiedBookingsSql] = useState(false);
 
 
-  // Supabase Custom Connection & Diagnostic State
+  // Supabase Connection & Diagnostics State (read-only — env-based config)
   const [showConfigModal, setShowConfigModal] = useState(false);
-  const [customUrlInput, setCustomUrlInput] = useState('');
-  const [customKeyInput, setCustomKeyInput] = useState('');
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [diagnosticResult, setDiagnosticResult] = useState<SupabaseDiagnosticResult | null>(null);
   const [configSaveMsg, setConfigSaveMsg] = useState<string | null>(null);
   const [syncToastMsg, setSyncToastMsg] = useState<string | null>(null);
-  const [isEmergencyMode, setIsEmergencyMode] = useState<boolean>(false);
-  const [razorpayKeyInput, setRazorpayKeyInput] = useState<string>('');
 
   const handleOpenConfigModal = () => {
-    const creds = getSupabaseCredentials();
-    setCustomUrlInput(creds.url === 'https://placeholder-url.supabase.co' ? '' : creds.url);
-    setCustomKeyInput(creds.key === 'placeholder-anon-key' ? '' : creds.key);
-    setRazorpayKeyInput(getRazorpayKeyId() === 'rzp_test_1DP5mmOlF5G5ag' ? '' : getRazorpayKeyId());
     setDiagnosticResult(null);
     setConfigSaveMsg(null);
     setShowConfigModal(true);
@@ -149,35 +136,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     setDiagnosticResult(null);
     setConfigSaveMsg(null);
 
-    // Save temporary if inputs filled
-    if (customUrlInput.trim() || customKeyInput.trim()) {
-      saveCustomSupabaseCredentials(customUrlInput.trim(), customKeyInput.trim());
-    }
-    if (razorpayKeyInput.trim()) {
-      saveCustomRazorpayKeyId(razorpayKeyInput.trim());
-    }
-
     const diag = await testSupabaseConnection();
     setIsTestingConnection(false);
     setDiagnosticResult(diag);
-  };
-
-  const handleSaveCredentials = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (razorpayKeyInput.trim()) {
-      saveCustomRazorpayKeyId(razorpayKeyInput.trim());
-    }
-    const saveRes = saveCustomSupabaseCredentials(customUrlInput.trim(), customKeyInput.trim());
-    if (saveRes.success) {
-      setConfigSaveMsg('✓ Credentials & Razorpay Key successfully saved!');
-      const diag = await testSupabaseConnection();
-      setDiagnosticResult(diag);
-      if (isAuthenticated) {
-        await loadAllDatabaseData();
-      }
-    } else {
-      setConfigSaveMsg(`Credentials updated.`);
-    }
   };
 
   const loadJewelleryCustomers = async () => {
@@ -189,7 +150,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       // Derive from hennaBookings if table not yet populated
       const derivedFromBookings = dbHennaBookings
         .filter((b) => b.type === 'jewellery' || b.serviceCategory === 'Jewellery Rental & Sale')
-        .map((b) => ({
+        .map((b) => {
+          // Match the checkout rule: ₹60 for Tamil Nadu pincodes (60–64), else ₹150.
+          const addr = `${b.deliveryAddress || ''} ${b.location || ''}`;
+          const isTNPIN = /\b6[0-4]\d{4}\b/.test(addr);
+          const derivedShipping = b.shippingFee || (isTNPIN ? '₹60' : '₹150');
+          const derivedShippingNum = parseInt(derivedShipping.replace(/[^0-9]/g, ''), 10) || 60;
+          const paymentNum = b.paymentAmount ? parseInt(b.paymentAmount.replace(/[^0-9]/g, ''), 10) || 0 : 0;
+          return ({
           id: b.id,
           orderRef: b.ref,
           customerName: b.clientName,
@@ -198,15 +166,16 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           email: b.clientEmail || 'client@shyamcreations.com',
           deliveryAddress: b.deliveryAddress || b.location || 'Studio Pickup',
           productName: b.serviceName.replace(/\(Jewellery Order\)/gi, '').trim(),
-          itemPrice: b.paymentAmount ? `₹${(parseInt(b.paymentAmount.replace(/[^0-9]/g, '')) - 50).toLocaleString('en-IN')}` : '₹2,500',
-          shippingFee: b.shippingFee || '₹50',
+          itemPrice: b.paymentAmount ? `₹${Math.max(0, paymentNum - derivedShippingNum).toLocaleString('en-IN')}` : '₹2,500',
+          shippingFee: derivedShipping,
           totalAmount: b.paymentAmount || '₹2,550',
           paymentMethod: b.paymentMethod || 'Google Pay / UPI',
           upiTransactionId: b.transactionId || 'GPay-UTR-Verified',
           paymentStatus: 'Paid' as 'Paid',
           orderStatus: (b.status === 'Completed' ? 'Delivered' : 'Processing') as JewelleryCustomer['orderStatus'],
           notes: b.specialRequests || 'Express Courier Dispatch',
-        }));
+          });
+        });
       setCustomersList(derivedFromBookings);
     }
     setIsLoadingCustomers(false);
@@ -338,7 +307,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     if (result.success) {
       setIsAuthenticated(true);
       setAdminUser(result.user);
-      setIsEmergencyMode(Boolean(result.isOffline || result.isEmergency));
       await loadAllDatabaseData();
     } else {
       setAuthError(result.error || 'Authentication failed. Please check credentials.');
@@ -862,24 +830,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               className="text-emerald-400 hover:text-white p-1 cursor-pointer"
             >
               <span className="material-symbols-outlined text-xs">close</span>
-            </button>
-          </div>
-        )}
-
-        {/* Emergency / Offline Mode Warning */}
-        {isEmergencyMode && (
-          <div className="p-4 bg-[#3a1d05] border border-amber-500/50 text-amber-200 text-xs rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl">
-            <div className="flex items-center gap-2.5">
-              <span className="material-symbols-outlined text-amber-400 text-base shrink-0">wifi_off</span>
-              <span>
-                <strong className="text-white">Studio Safety Access:</strong> Supabase database is unreachable or not configured. Running in local session mode.
-              </span>
-            </div>
-            <button
-              onClick={handleOpenConfigModal}
-              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-[var(--sc-surface-alt)] font-bold text-xs rounded-xl shadow shrink-0 cursor-pointer"
-            >
-              Configure Live Database
             </button>
           </div>
         )}
@@ -2279,7 +2229,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     Supabase Connection & Diagnostics
                   </h3>
                   <p className="text-xs text-[#8A7F72]">
-                    Configure credentials & diagnose database reachability and table access
+                    Diagnose database reachability and table access — credentials come from environment variables
                   </p>
                 </div>
               </div>
@@ -2299,55 +2249,25 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               </div>
             )}
 
-            {/* Credentials Form */}
-            <form onSubmit={handleSaveCredentials} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-[#ded8ce] flex items-center justify-between">
-                  <span>Supabase Project URL</span>
-                  <span className="text-[#8A7F72] font-normal lowercase">e.g. https://xyzcompany.supabase.co</span>
-                </label>
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-3 text-[#8A7F72] text-base">
-                    link
-                  </span>
-                  <input
-                    type="url"
-                    value={customUrlInput}
-                    onChange={(e) => setCustomUrlInput(e.target.value)}
-                    placeholder="https://your-project-ref.supabase.co"
-                    className="w-full pl-10 pr-4 py-2.5 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
-                  />
+            {/* Environment configuration (read-only) */}
+            <div className="space-y-4">
+              <div className="bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-2xl p-4 text-xs space-y-2">
+                <p className="font-bold text-[#E0B45F] flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">lock</span>Configuration comes from environment variables</p>
+                <p className="text-[#8A7F72] leading-relaxed">
+                  The app reads <code className="text-blue-300">VITE_SUPABASE_URL</code> and <code className="text-blue-300">VITE_SUPABASE_ANON_KEY</code> from the environment
+                  (local <code className="text-blue-300">.env</code> or the hosting dashboard env vars). Nothing is stored in the browser.
+                </p>
+                <div className="flex items-center justify-between border-t border-[var(--sc-border-dark)] pt-2">
+                  <span className="text-[#8A7F72]">Current status:</span>
+                  {getSupabaseCredentials().isConfigured ? (
+                    <span className="text-emerald-400 font-bold">Configured & Connected</span>
+                  ) : (
+                    <span className="text-amber-400 font-bold">Not configured</span>
+                  )}
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-[#ded8ce] flex items-center justify-between">
-                  <span>Supabase Anon / Public API Key</span>
-                  <span className="text-[#8A7F72] font-normal lowercase">from Supabase Dashboard &gt; Project Settings &gt; API</span>
-                </label>
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-3 text-[#8A7F72] text-base">
-                    key
-                  </span>
-                  <input
-                    type="text"
-                    value={customKeyInput}
-                    onChange={(e) => setCustomKeyInput(e.target.value)}
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs font-mono text-white placeholder-[#8A7F72] focus:outline-none focus:border-[#E0B45F]"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-[#E0B45F] hover:bg-[#D4A24C] text-[var(--sc-surface-alt)] font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-sm">save</span>
-                  <span>Save & Apply Credentials</span>
-                </button>
-
+              <div className="flex flex-wrap gap-3 pt-1">
                 <button
                   type="button"
                   onClick={handleTestConnection}
@@ -2360,7 +2280,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   <span>{isTestingConnection ? 'Running Diagnostics...' : 'Test Connection & Tables'}</span>
                 </button>
               </div>
-            </form>
+            </div>
 
             {/* Diagnostic Results Card */}
             {diagnosticResult && (

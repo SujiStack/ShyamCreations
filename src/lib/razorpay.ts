@@ -18,6 +18,12 @@ export interface RazorpayPaymentOptions {
   jewelleryId?: string;
   deliveryAddress?: string;
   itemsToDecrement?: Array<{ productId: string; quantity: number }>;
+  /** Formatted shipping charge shown to the customer, e.g. "₹60" / "₹150" / "FREE" */
+  shippingFee?: string;
+  /** Rental window (ISO YYYY-MM-DD) — forwarded to the payment verification function */
+  startDate?: string;
+  endDate?: string;
+  durationDays?: number;
 }
 
 export interface RazorpayPaymentResult {
@@ -30,34 +36,11 @@ export interface RazorpayPaymentResult {
 }
 
 /**
- * Get active Razorpay Key ID (from environment or localStorage override)
+ * Get the active Razorpay Key ID (environment only — set VITE_RAZORPAY_KEY_ID in production)
  */
 export function getRazorpayKeyId(): string {
   const envKey = (import.meta.env.VITE_RAZORPAY_KEY_ID || '').trim();
-  let customKey = '';
-  if (typeof window !== 'undefined') {
-    try {
-      customKey = (localStorage.getItem('shyam_custom_razorpay_key_id') || '').trim();
-    } catch {
-      // ignore
-    }
-  }
-  return customKey || envKey || 'rzp_test_1DP5mmOlF5G5ag'; // standard test key placeholder
-}
-
-/**
- * Save custom Razorpay Key ID in browser localStorage
- */
-export function saveCustomRazorpayKeyId(keyId: string): void {
-  try {
-    if (keyId && keyId.trim()) {
-      localStorage.setItem('shyam_custom_razorpay_key_id', keyId.trim());
-    } else {
-      localStorage.removeItem('shyam_custom_razorpay_key_id');
-    }
-  } catch {
-    // ignore
-  }
+  return envKey || 'rzp_test_1DP5mmOlF5G5ag'; // standard test key placeholder
 }
 
 /**
@@ -222,6 +205,10 @@ export async function initiateRazorpayPayment(
                   jewelleryId: options.jewelleryId,
                   deliveryAddress: options.deliveryAddress,
                   itemsToDecrement: options.itemsToDecrement,
+                  shippingFee: options.shippingFee,
+                  startDate: options.startDate,
+                  endDate: options.endDate,
+                  durationDays: options.durationDays,
                 },
               }
             );

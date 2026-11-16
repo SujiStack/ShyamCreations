@@ -8,13 +8,16 @@ import {
   decrementProductStockInDb,
 } from '../lib/supabaseService';
 import { initiateRazorpayPayment } from '../lib/razorpay';
+import { sendBookingConfirmationEmails, EmailSendResult } from '../lib/emailService';
+import { openPrintableReceipt } from '../lib/receipt';
 import {
   calcRental,
   formatINR,
-  RENTAL_DAY_OPTIONS,
+  rentalDaysBetween,
   SECURITY_DEPOSIT_NOTE,
   SECURITY_DEPOSIT_RATE,
 } from '../lib/rentalCalc';
+import DateInputDDMMYY from '../components/DateInputDDMMYY';
 import { formatDateDDMMYY } from '../lib/dateFormat';
 
 interface JewelleryProductViewProps {
@@ -58,12 +61,18 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
   const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
+  const [customerEmail, setCustomerEmail] = useState<string>('');
+  const [emailStatus, setEmailStatus] = useState<EmailSendResult | null>(null);
   const [customerAddress, setCustomerAddress] = useState<string>('');
   const [deliveryState, setDeliveryState] = useState<string>('Tamil Nadu');
   const [deliveryPincode, setDeliveryPincode] = useState<string>('');
-  const [rentalDays, setRentalDays] = useState<number>(3);
+  const [rentalFromDate, setRentalFromDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [rentalToDate, setRentalToDate] = useState<string>(() => new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]);
+  // Inclusive rental length in days, derived from the from/to dates.
+  const rentalRangeDays = rentalDaysBetween(rentalFromDate, rentalToDate);
+  const rentalDays = Math.max(1, rentalRangeDays || 1);
   const [confirmedOrderCard, setConfirmedOrderCard] = useState<{
-    ref: string; productName: string; clientName: string; phone: string;
+    ref: string; productName: string; clientName: string; phone: string; clientEmail: string;
     deliveryAddress: string; deliveryState: string; deliveryPincode: string;
     itemPrice: string; shippingFee: string; totalAmount: string; transactionId: string; image: string;
     isRental?: boolean; rentalBreakdown?: string; securityDeposit?: string; rentalPeriod?: string;
@@ -73,8 +82,34 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     if (customerUser) {
       if (!customerName) setCustomerName(customerUser.name || '');
       if (!customerPhone) setCustomerPhone(customerUser.phone || '');
+      if (!customerEmail && customerUser.email) setCustomerEmail(customerUser.email);
     }
   }, [customerUser]);
+
+  const AUTO_CLOSE_SECONDS = 10;
+  const [autoCloseIn, setAutoCloseIn] = useState<number>(AUTO_CLOSE_SECONDS);
+
+  // Auto-close the Order Success card a few seconds after payment.
+  useEffect(() => {
+    if (!confirmedOrderCard) {
+      setAutoCloseIn(AUTO_CLOSE_SECONDS);
+      return;
+    }
+    setAutoCloseIn(AUTO_CLOSE_SECONDS);
+    const startedAt = Date.now();
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, AUTO_CLOSE_SECONDS - Math.floor((Date.now() - startedAt) / 1000));
+      setAutoCloseIn(remaining);
+    }, 500);
+    const timeout = setTimeout(() => {
+      setConfirmedOrderCard(null);
+      setEmailStatus(null);
+    }, AUTO_CLOSE_SECONDS * 1000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [confirmedOrderCard]);
 
   useEffect(() => {
     if (product && product.id) {
@@ -145,7 +180,7 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
       return;
     }
     setCheckoutProduct(prod);
-    if (customerUser) { setCustomerName(customerUser.name || ''); setCustomerPhone(customerUser.phone || ''); }
+    if (customerUser) { setCustomerName(customerUser.name || ''); setCustomerPhone(customerUser.phone || ''); if (customerUser.email) setCustomerEmail(customerUser.email); }
   };
 
   const TAMIL_NADU_PIN_PREFIXES = ['60', '61', '62', '63', '64'];
@@ -166,6 +201,21 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     if (!customerPhone.trim() || customerPhone.trim().length < 10) {
       Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter a valid 10-digit mobile number.', confirmButtonColor: 'var(--sc-emerald-dark)' });
       return;
+    }
+    if (!customerEmail.trim() || !customerEmail.trim().includes('@')) {
+      Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter a valid email address — the booking confirmation & receipt will be sent to this email.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+      return;
+    }
+    const isRentalCheck = checkoutProduct.type === 'Rental';
+    if (isRentalCheck) {
+      if (!rentalFromDate || !rentalToDate) {
+        Swal.fire({ icon: 'error', title: 'Rental Dates Required', text: 'Please select both the rental From and To dates.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+        return;
+      }
+      if (rentalRangeDays < 1) {
+        Swal.fire({ icon: 'error', title: 'Invalid Rental Dates', text: 'The rental To date cannot be before the From date.', confirmButtonColor: 'var(--sc-emerald-dark)' });
+        return;
+      }
     }
     if (!customerAddress.trim() || customerAddress.trim().length < 8) {
       Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please enter complete delivery address.', confirmButtonColor: 'var(--sc-emerald-dark)' });
@@ -219,16 +269,14 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     // Customer-facing breakdown — never shows the original amount (it is
     // only used internally to calculate the 40% deposit).
     const rentalBreakdown = rental
-      ? `Rental ${formatINR(rental.rentalPerDayPerPiece)}/day × ${rental.days} days = ${formatINR(rental.rentalTotal)} | Security deposit ${formattedDeposit} (refundable after safe return)`
+      ? `Rental ${formatDateDDMMYY(rentalFromDate)} → ${formatDateDDMMYY(rentalToDate)} (${formatINR(rental.rentalPerDayPerPiece)}/day × ${rental.days} days = ${formatINR(rental.rentalTotal)}) | Security deposit ${formattedDeposit} (refundable after safe return)`
       : '';
     // Internal studio record (DB notes only, not shown to the customer).
     const rentalBreakdownInternal = rental
       ? `Original price ${formatINR(rental.originalPricePerPiece)} × ${qty} = ${formatINR(rental.originalTotal)} | ${rentalBreakdown}`
       : '';
-    const startDateIso = new Date().toISOString().split('T')[0];
-    const endDateIso = rental
-      ? new Date(Date.now() + (rental.days - 1) * 86400000).toISOString().split('T')[0]
-      : startDateIso;
+    const startDateIso = rental ? rentalFromDate : new Date().toISOString().split('T')[0];
+    const endDateIso = rental ? rentalToDate : startDateIso;
     const refCode = `JW-${Math.floor(100000 + Math.random() * 900000)}`;
 
     try {
@@ -237,7 +285,7 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         orderType: checkoutProduct.type === 'Rental' ? 'jewellery_rental' : 'jewellery_single',
         amount: totalAmountNum,
         customerName: customerName.trim(),
-        customerEmail: customerUser?.email || 'client@shyamcreations.com',
+        customerEmail: customerEmail.trim(),
         customerPhone: customerPhone.trim(),
         serviceOrProductName: isRental
           ? `${checkoutProduct.name} (${qty} Qty) — Rental ${rentalDays} days: ${formatINR(rental!.rentalTotal)} + Deposit ${formattedDeposit}`
@@ -246,6 +294,10 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         jewelleryId: checkoutProduct.id,
         deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         itemsToDecrement: [{ productId: checkoutProduct.id, quantity: qty }],
+        shippingFee: formattedShipping,
+        startDate: rental ? startDateIso : undefined,
+        endDate: rental ? endDateIso : undefined,
+        durationDays: rental ? rental.days : undefined,
       });
 
       if (!paymentResult.success) {
@@ -260,7 +312,7 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         serviceName: `${checkoutProduct.name} (${qty} Qty)`,
         date: new Date().toISOString().split('T')[0], timeSlot: 'Express Shipping',
         location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, clientName: customerName.trim(),
-        clientEmail: customerUser?.email || 'client@shyamcreations.com',
+        clientEmail: customerEmail.trim(),
         phone: customerPhone.trim(), wa: customerPhone.trim(),
         deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`,
         shippingFee: formattedShipping,
@@ -270,14 +322,59 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         transactionId: verifiedTxnId,
       };
 
-      await insertSupabaseJewelleryCustomer({ orderRef: refCode, customerName: customerName.trim(), phone: customerPhone.trim(), whatsapp: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, productName: `${checkoutProduct.name} (${qty} Qty)`, jewelleryId: checkoutProduct.id, itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, paymentMethod: 'Razorpay (Online Payment)', upiTransactionId: verifiedTxnId, paymentStatus: 'Paid', orderStatus: 'Processing', notes: `${rentalBreakdownInternal ? rentalBreakdownInternal + ' | ' : ''}${SECURITY_DEPOSIT_NOTE} Express Jewellery Checkout. Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}` });
-      await insertSupabaseJewelleryBooking({ bookingRef: refCode, clientName: customerName.trim(), phone: customerPhone.trim(), email: customerUser?.email || 'client@shyamcreations.com', productName: checkoutProduct.name, jewelleryId: checkoutProduct.id, bookingType: isRental ? 'Rental' : 'Purchase', startDate: startDateIso, endDate: endDateIso, durationDays: rental ? rental.days : 1, dailyRate: rental ? `${formatINR(rental.rentalPerDayPerPiece)}/day` : undefined, depositAmount: rental ? formattedDeposit : '₹0', totalPrice: formattedTotal, location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, paymentStatus: 'Paid', paymentMethod: 'Razorpay (Online Payment)', transactionId: verifiedTxnId, status: 'Confirmed', notes: `${rentalBreakdownInternal ? rentalBreakdownInternal + ' | ' : ''}${SECURITY_DEPOSIT_NOTE} Express Courier. Qty: ${qty}. Address: ${customerAddress.trim()}` });
+      await insertSupabaseJewelleryCustomer({ orderRef: refCode, customerName: customerName.trim(), phone: customerPhone.trim(), whatsapp: customerPhone.trim(), email: customerEmail.trim(), deliveryAddress: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, productName: `${checkoutProduct.name} (${qty} Qty)`, jewelleryId: checkoutProduct.id, itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, paymentMethod: 'Razorpay (Online Payment)', upiTransactionId: verifiedTxnId, paymentStatus: 'Paid', orderStatus: 'Processing', notes: `${rentalBreakdownInternal ? rentalBreakdownInternal + ' | ' : ''}${SECURITY_DEPOSIT_NOTE} Express Jewellery Checkout. Address: ${customerAddress.trim()} | State: ${deliveryState.trim()} | Pincode: ${deliveryPincode.trim()}` });
+      await insertSupabaseJewelleryBooking({ bookingRef: refCode, clientName: customerName.trim(), phone: customerPhone.trim(), email: customerEmail.trim(), productName: checkoutProduct.name, jewelleryId: checkoutProduct.id, bookingType: isRental ? 'Rental' : 'Purchase', startDate: startDateIso, endDate: endDateIso, durationDays: rental ? rental.days : 1, dailyRate: rental ? `${formatINR(rental.rentalPerDayPerPiece)}/day` : undefined, depositAmount: rental ? formattedDeposit : '₹0', totalPrice: formattedTotal, location: `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`, paymentStatus: 'Paid', paymentMethod: 'Razorpay (Online Payment)', transactionId: verifiedTxnId, status: 'Confirmed', notes: `${rentalBreakdownInternal ? rentalBreakdownInternal + ' | ' : ''}${SECURITY_DEPOSIT_NOTE} Express Courier. Qty: ${qty}. Address: ${customerAddress.trim()}` });
       await decrementProductStockInDb(checkoutProduct.id, qty);
       if (onDecrementStock) await onDecrementStock(checkoutProduct.id, qty);
       if (onAddOrder) await onAddOrder(newOrder);
 
-      setConfirmedOrderCard({ ref: refCode, productName: `${checkoutProduct.name} (${qty} Qty)`, clientName: customerName.trim(), phone: customerPhone.trim(), deliveryAddress: customerAddress.trim(), deliveryState: deliveryState.trim(), deliveryPincode: deliveryPincode.trim(), itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, transactionId: verifiedTxnId, image: checkoutProduct.images[0], isRental, rentalBreakdown, securityDeposit: rental ? formattedDeposit : undefined, rentalPeriod: rental ? `${formatDateDDMMYY(startDateIso)} to ${formatDateDDMMYY(endDateIso)} (${rental.days} days)` : undefined });
+      const deliveryAddressFull = `${customerAddress.trim()}, ${deliveryState.trim()} - ${deliveryPincode.trim()}`;
+      setConfirmedOrderCard({ ref: refCode, productName: `${checkoutProduct.name} (${qty} Qty)`, clientName: customerName.trim(), phone: customerPhone.trim(), clientEmail: customerEmail.trim(), deliveryAddress: customerAddress.trim(), deliveryState: deliveryState.trim(), deliveryPincode: deliveryPincode.trim(), itemPrice: formattedItemPrice, shippingFee: formattedShipping, totalAmount: formattedTotal, transactionId: verifiedTxnId, image: checkoutProduct.images[0], isRental, rentalBreakdown, securityDeposit: rental ? formattedDeposit : undefined, rentalPeriod: rental ? `${formatDateDDMMYY(startDateIso)} to ${formatDateDDMMYY(endDateIso)} (${rental.days} days)` : undefined });
       setCheckoutProduct(null);
+
+      // Send the same booking confirmation email (EmailJS) as the Mehandi flow
+      const emailRes = await sendBookingConfirmationEmails({
+        ref: refCode,
+        clientName: customerName.trim(),
+        clientEmail: customerEmail.trim(),
+        clientPhone: customerPhone.trim(),
+        clientWa: customerPhone.trim(),
+        serviceName: `${checkoutProduct.name} (${qty} Qty)`,
+        serviceCategory: 'Jewellery Rental & Sale',
+        date: startDateIso,
+        timeSlot: isRental ? `Express Courier — Rental ${rentalDays} days` : 'Express Courier — Dispatch',
+        location: deliveryAddressFull,
+        specialRequests: `${rentalBreakdown ? rentalBreakdown + ' | ' : ''}${SECURITY_DEPOSIT_NOTE} Address: ${deliveryAddressFull}`,
+        type: 'jewellery',
+        paymentStatus: 'Paid',
+        paymentAmount: formattedTotal,
+        paymentMethod: 'Razorpay (Online Payment)',
+        transactionId: verifiedTxnId,
+        receipt: {
+          title: isRental ? 'Jewellery Rental Receipt' : 'Jewellery Order Receipt',
+          ref: refCode,
+          date: formatDateDDMMYY(startDateIso),
+          customerName: customerName.trim(),
+          customerPhone: customerPhone.trim(),
+          customerEmail: customerEmail.trim(),
+          address: deliveryAddressFull,
+          items: [
+            { label: `${isRental ? 'Jewellery Rental' : 'Jewellery'} — ${checkoutProduct.name} (${qty} Qty)`, value: formattedItemPrice },
+            ...(isRental && rentalBreakdown ? [{ label: 'Rental Breakdown', value: rentalBreakdown }] : []),
+          ],
+          summary: [
+            ...(isRental && rental ? [{ label: 'Security Deposit (refundable)', value: formattedDeposit }] : []),
+            { label: 'Shipping', value: formattedShipping },
+          ],
+          totalLabel: 'Total Paid',
+          totalAmount: formattedTotal,
+          paymentMethod: 'Razorpay (Online Payment)',
+          paymentStatus: 'Paid',
+          transactionId: verifiedTxnId,
+          notes: isRental ? `Rental Period: ${formatDateDDMMYY(startDateIso)} to ${formatDateDDMMYY(endDateIso)} (${rentalDays} days)` : undefined,
+        },
+      });
+      setEmailStatus(emailRes);
     } catch (err: any) {
       console.error('Razorpay jewellery checkout error:', err);
       Swal.fire({
@@ -287,6 +384,39 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
         confirmButtonColor: 'var(--sc-emerald-dark)',
       });
     }
+  };
+
+  const downloadOrderReceipt = () => {
+    if (!confirmedOrderCard) return;
+    const items = [
+      { label: `${confirmedOrderCard.isRental ? 'Jewellery Rental' : 'Jewellery'} — ${confirmedOrderCard.productName}`, value: confirmedOrderCard.itemPrice },
+    ];
+    if (confirmedOrderCard.isRental && confirmedOrderCard.rentalBreakdown) {
+      items.push({ label: 'Rental Breakdown', value: confirmedOrderCard.rentalBreakdown });
+    }
+    const summary = [
+      ...(confirmedOrderCard.isRental && confirmedOrderCard.securityDeposit
+        ? [{ label: 'Security Deposit (refundable)', value: confirmedOrderCard.securityDeposit }]
+        : []),
+      { label: 'Shipping', value: confirmedOrderCard.shippingFee },
+    ];
+    openPrintableReceipt({
+      title: confirmedOrderCard.isRental ? 'Jewellery Rental Receipt' : 'Jewellery Order Receipt',
+      ref: confirmedOrderCard.ref,
+      date: formatDateDDMMYY(new Date().toISOString().split('T')[0]),
+      customerName: confirmedOrderCard.clientName,
+      customerPhone: confirmedOrderCard.phone,
+      customerEmail: confirmedOrderCard.clientEmail,
+      address: `${confirmedOrderCard.deliveryAddress}, ${confirmedOrderCard.deliveryState} - ${confirmedOrderCard.deliveryPincode}`,
+      items,
+      summary,
+      totalLabel: 'Total Paid',
+      totalAmount: confirmedOrderCard.totalAmount,
+      paymentMethod: 'Razorpay (Online Payment)',
+      paymentStatus: 'Paid',
+      transactionId: confirmedOrderCard.transactionId,
+      notes: confirmedOrderCard.isRental && confirmedOrderCard.rentalPeriod ? `Rental Period: ${confirmedOrderCard.rentalPeriod}` : undefined,
+    });
   };
 
   const openWhatsAppOrderReceipt = () => {
@@ -547,19 +677,23 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                     Rental Period & Security Deposit
                   </h3>
                   <div>
-                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-2">Rental days</label>
-                    <div className="flex flex-wrap gap-2">
-                      {RENTAL_DAY_OPTIONS.map((d) => (
-                        <button
-                          key={d}
-                          type="button"
-                          onClick={() => setRentalDays(d)}
-                          className={`px-3.5 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${rentalDays === d ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)]' : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text-dim)] border-[var(--sc-border)] hover:bg-[var(--sc-emerald)]/10'}`}
-                        >
-                          {d} {d === 1 ? 'Day' : 'Days'}
-                        </button>
-                      ))}
+                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-2">Rental period <span className="text-red-500">*</span></label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-[var(--sc-text-dim)] mb-1 uppercase tracking-wider">From</label>
+                        <DateInputDDMMYY id="rental-from-date" value={rentalFromDate} onChange={setRentalFromDate} min={new Date().toISOString().split('T')[0]} placeholder="DD/MM/YY" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-[var(--sc-text-dim)] mb-1 uppercase tracking-wider">To</label>
+                        <DateInputDDMMYY id="rental-to-date" value={rentalToDate} onChange={setRentalToDate} min={rentalFromDate || new Date().toISOString().split('T')[0]} placeholder="DD/MM/YY" />
+                      </div>
                     </div>
+                    <p className="text-[11px] font-bold text-[var(--sc-emerald-dark)] mt-2 flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm">date_range</span>
+                      {rentalRangeDays >= 1
+                        ? `${rentalRangeDays} ${rentalRangeDays === 1 ? 'day' : 'days'} (${formatDateDDMMYY(rentalFromDate)} → ${formatDateDDMMYY(rentalToDate)})`
+                        : 'Select a valid From → To range'}
+                    </p>
                   </div>
                   <div className="space-y-1.5 text-xs text-[var(--sc-text-dim)] border-t border-[var(--sc-border)] pt-3">
                     <div className="flex justify-between"><span>Rental ({formatINR(rental.rentalPerDayPerPiece)}/day × {rental.days} days)</span><span className="font-bold text-[var(--sc-text)]">{formatINR(rental.rentalTotal)}</span></div>
@@ -580,9 +714,13 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                     <input type="text" placeholder="e.g. Suji Shyamala" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)]" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">Phone <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — booking confirmation & receipt will be emailed here">Phone <span className="text-red-500">*</span></label>
                     <input type="tel" placeholder="e.g. 9363710342" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)]" />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — booking confirmation & receipt will be emailed here">Email <span className="text-red-500">*</span></label>
+                  <input type="email" placeholder="e.g. suji@example.com" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} className="w-full px-3.5 py-2.5 bg-[var(--sc-surface)] border border-[var(--sc-border)]/60 rounded-xl text-xs text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald-dark)]" />
                 </div>
                 <div>
                    <label className="block text-xs font-bold text-[var(--sc-text-dim)] mb-1 flex items-center gap-1" title="Required field — this field must be filled in before you can proceed">Delivery Address <span className="text-red-500">*</span></label>
@@ -644,7 +782,16 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
       {/* Confirmed Order Receipt */}
       {confirmedOrderCard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-          <div className="bg-[var(--sc-bg-soft)] rounded-3xl p-6 md:p-8 max-w-lg w-full border border-[var(--sc-emerald)] shadow-2xl space-y-6 relative text-center">
+          <div className="bg-[var(--sc-bg-soft)] rounded-3xl p-6 md:p-8 max-w-lg w-full border border-[var(--sc-emerald)] shadow-2xl space-y-6 relative text-center max-h-[92vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => { setConfirmedOrderCard(null); setEmailStatus(null); }}
+              className="absolute top-4 right-4 w-9 h-9 rounded-full bg-[var(--sc-accent-warm)] hover:bg-[var(--sc-border)] text-[var(--sc-text)] flex items-center justify-center transition-colors cursor-pointer"
+              title="Close"
+              aria-label="Close"
+            >
+              <span className="material-symbols-outlined text-lg leading-none">close</span>
+            </button>
             <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto">
               <span className="material-symbols-outlined text-3xl">check_circle</span>
             </div>
@@ -680,13 +827,53 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
                 <p className="text-[var(--sc-text-dim)]">{confirmedOrderCard.deliveryAddress}</p>
               </div>
             </div>
+            {/* Email Confirmation Banner */}
+            <div className={`p-3.5 border rounded-2xl text-[11px] text-left space-y-1.5 shadow-xs ${
+              emailStatus?.clientEmailSent ? 'bg-emerald-50 border-emerald-200/80 text-emerald-900' : 'bg-amber-50 border-amber-200/80 text-amber-900'
+            }`}>
+              <div className="flex items-center justify-between font-bold">
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-base">mark_email_read</span>
+                  <span>Email Dispatch Status</span>
+                </div>
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
+                  emailStatus?.clientEmailSent ? 'bg-emerald-200/80 text-emerald-900' : 'bg-amber-200/80 text-amber-900'
+                }`}>
+                  {emailStatus?.clientEmailSent ? '✓ Delivered' : '⚠️ Pending'}
+                </span>
+              </div>
+              <p className="text-[10px] leading-snug">
+                • Customer ({confirmedOrderCard.clientEmail}): {
+                  emailStatus?.clientEmailSent ? (
+                    <strong className="text-emerald-900">✓ Sent via EmailJS</strong>
+                  ) : (
+                    <strong className="text-amber-900">⚠️ {emailStatus?.error || 'Dispatch check required'}</strong>
+                  )
+                }
+              </p>
+            </div>
+            <div className="flex items-center gap-2 px-1">
+              <span className="material-symbols-outlined text-sm text-[var(--sc-text-dim)]">timer</span>
+              <div className="flex-1 h-1.5 bg-[var(--sc-border)]/50 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[var(--sc-emerald-dark)] rounded-full transition-all duration-500 ease-linear"
+                  style={{ width: `${(autoCloseIn / AUTO_CLOSE_SECONDS) * 100}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-mono font-bold text-[var(--sc-text-dim)] tabular-nums">{autoCloseIn}s</span>
+            </div>
             <div className="space-y-2 pt-1">
+              <button type="button" onClick={downloadOrderReceipt}
+                className="w-full py-3.5 bg-[var(--sc-emerald-dark)] hover:bg-[var(--sc-emerald)] text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer">
+                <span className="material-symbols-outlined text-base">receipt_long</span>
+                <span>DOWNLOAD / PRINT RECEIPT</span>
+              </button>
               <button type="button" onClick={openWhatsAppOrderReceipt}
                 className="w-full py-3.5 bg-[#2C6B4F] hover:bg-[#1F4D3A] text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer">
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                 <span>SEND RECEIPT ON WHATSAPP</span>
               </button>
-              <button type="button" onClick={() => { setConfirmedOrderCard(null); onNavigate('my-bookings'); }}
+              <button type="button" onClick={() => { setConfirmedOrderCard(null); setEmailStatus(null); onNavigate('my-bookings'); }}
                 className="w-full py-3 bg-[#171310] hover:bg-[var(--sc-emerald-dark)] text-[#f3ebd9] font-bold text-xs rounded-xl transition-all cursor-pointer">
                 VIEW MY BOOKINGS
               </button>

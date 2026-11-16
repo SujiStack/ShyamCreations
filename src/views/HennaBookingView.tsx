@@ -3,6 +3,7 @@ import Swal from 'sweetalert2';
 import { ViewMode, HennaBooking, CustomerAccount, PendingAuthAction, DisabledSlot } from '../types';
 import { SERVICE_PACKAGES, VISIONARY_ARTISTS, STUDIO_INFO } from '../data/mockData';
 import { sendBookingConfirmationEmails, EmailSendResult } from '../lib/emailService';
+import { openPrintableReceipt } from '../lib/receipt';
 import { insertSupabaseJewelleryBooking } from '../lib/supabaseService';
 import { initiateRazorpayPayment } from '../lib/razorpay';
 import { formatDateDDMMYY } from '../lib/dateFormat';
@@ -171,6 +172,31 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
       .filter((slot) => !isSlotBooked(date, slot) && !isSlotDisabled(date, slot))
       .map((slot) => ({ timeSlot: slot, isBooked: isSlotBooked(date, slot), isDisabled: isSlotDisabled(date, slot) }));
   }, [isSlotBooked, isSlotDisabled]);
+
+  const AUTO_CLOSE_SECONDS = 10;
+  const [autoCloseIn, setAutoCloseIn] = useState<number>(AUTO_CLOSE_SECONDS);
+
+  // Auto-close the Booking Success card a few seconds after payment.
+  useEffect(() => {
+    if (!confirmedBookingCard) {
+      setAutoCloseIn(AUTO_CLOSE_SECONDS);
+      return;
+    }
+    setAutoCloseIn(AUTO_CLOSE_SECONDS);
+    const startedAt = Date.now();
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, AUTO_CLOSE_SECONDS - Math.floor((Date.now() - startedAt) / 1000));
+      setAutoCloseIn(remaining);
+    }, 500);
+    const timeout = setTimeout(() => {
+      setConfirmedBookingCard(null);
+      setEmailStatus(null);
+    }, AUTO_CLOSE_SECONDS * 1000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [confirmedBookingCard]);
 
   // Auto-select the first available slot for today when the component mounts
   useEffect(() => {
@@ -380,6 +406,28 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
         paymentAmount: payAmtStr,
         paymentMethod: payMethodStr,
         transactionId: verifiedTxnId,
+        receipt: {
+          title: selectedCategory === 'mehendi' ? 'Mehandi Booking Receipt' : 'Jewellery Booking Receipt',
+          ref: refCode,
+          date: formatDateDDMMYY(selectedDate),
+          customerName: clientName,
+          customerPhone: clientPhone,
+          customerEmail: clientEmail,
+          address: location,
+          items: [{ label: serviceTitle, value: servicePriceVal }],
+          summary: [
+            { label: 'Payment Status', value: payStatusStr },
+            { label: 'Amount Paid', value: payAmtStr },
+            { label: 'Time Slot', value: selectedTime },
+            { label: 'Total Service Price', value: servicePriceVal },
+          ],
+          totalLabel: 'Amount Paid',
+          totalAmount: payAmtStr,
+          paymentMethod: payMethodStr,
+          paymentStatus: paymentOption === 'advance' ? 'Advance Paid' : 'Paid',
+          transactionId: verifiedTxnId,
+          notes: compiledNotes,
+        },
       });
 
       setEmailStatus(emailRes);
@@ -424,6 +472,33 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
     if (selectedCategory === 'jewellery') return p.category === 'Jewellery Rental & Sale';
     return p.category === 'Bridal & Occasion Mehendi';
   });
+
+  const downloadBookingReceipt = () => {
+    if (!confirmedBookingCard) return;
+    openPrintableReceipt({
+      title: selectedCategory === 'mehendi' ? 'Mehandi Booking Receipt' : 'Jewellery Booking Receipt',
+      ref: confirmedBookingCard.ref,
+      date: formatDateDDMMYY(confirmedBookingCard.date),
+      customerName: confirmedBookingCard.clientName,
+      customerPhone: confirmedBookingCard.phone,
+      customerEmail: confirmedBookingCard.clientEmail,
+      address: confirmedBookingCard.location,
+      items: [
+        { label: confirmedBookingCard.serviceName, value: confirmedBookingCard.totalPrice || confirmedBookingCard.paymentAmount || '' },
+      ],
+      summary: [
+        { label: 'Payment Status', value: confirmedBookingCard.paymentStatus || 'Advance Paid' },
+        { label: 'Amount Paid', value: confirmedBookingCard.paymentAmount || '' },
+        { label: 'Time Slot', value: confirmedBookingCard.timeSlot },
+      ],
+      totalLabel: 'Amount Paid',
+      totalAmount: confirmedBookingCard.paymentAmount || confirmedBookingCard.totalPrice || '',
+      paymentMethod: confirmedBookingCard.paymentMethod || 'Razorpay (Online Payment)',
+      paymentStatus: confirmedBookingCard.paymentStatus || 'Advance Paid',
+      transactionId: confirmedBookingCard.transactionId,
+      notes: confirmedBookingCard.specialRequests,
+    });
+  };
 
   if (confirmedBookingCard) {
     const rawCustWa = (confirmedBookingCard.wa || confirmedBookingCard.phone || '').replace(/\D/g, '');
@@ -553,8 +628,28 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
               )}
             </div>
 
+            {/* Auto-close countdown */}
+            <div className="flex items-center gap-2 px-1">
+              <span className="material-symbols-outlined text-sm text-[var(--sc-text-dim)]">timer</span>
+              <div className="flex-1 h-1.5 bg-[var(--sc-border)]/50 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[var(--sc-emerald-dark)] rounded-full transition-all duration-500 ease-linear"
+                  style={{ width: `${(autoCloseIn / AUTO_CLOSE_SECONDS) * 100}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-mono font-bold text-[var(--sc-text-dim)] tabular-nums">{autoCloseIn}s</span>
+            </div>
+
             {/* Action Buttons */}
             <div className="space-y-2.5 pt-2">
+              <button
+                onClick={downloadBookingReceipt}
+                className="w-full py-3.5 px-6 bg-[var(--sc-emerald-dark)] hover:bg-[var(--sc-emerald)] text-white font-bold text-sm rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+              >
+                <span className="material-symbols-outlined text-base">receipt_long</span>
+                <span>Download / Print Receipt</span>
+              </button>
+
               <a
                 href={`https://wa.me/${custWaFormatted}?text=${encodeURIComponent(custMessage)}`}
                 target="_blank"
