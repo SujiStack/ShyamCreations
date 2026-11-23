@@ -27,6 +27,9 @@ export interface DBJewelleryBookingRow {
   transaction_id?: string;
   status: string;
   notes?: string;
+  tracking_courier?: string;
+  tracking_number?: string;
+  tracking_url?: string;
 }
 
 export const JEWELLERY_BOOKINGS_TABLE_SQL = `-- Run this SQL in your Supabase SQL Editor to create the jewellery_bookings table:
@@ -52,7 +55,10 @@ CREATE TABLE IF NOT EXISTS public.jewellery_bookings (
     payment_method VARCHAR(100) DEFAULT 'Google Pay / UPI',
     transaction_id VARCHAR(100),
     status VARCHAR(50) DEFAULT 'Active Rental',
-    notes TEXT
+    notes TEXT,
+    tracking_courier TEXT,
+    tracking_number TEXT,
+    tracking_url TEXT
 );
 
 -- Enable Row Level Security (RLS)
@@ -85,6 +91,9 @@ export interface DBJewelleryCustomerRow {
   payment_status: string;
   order_status: string;
   notes?: string;
+  tracking_courier?: string;
+  tracking_number?: string;
+  tracking_url?: string;
 }
 
 export const JEWELLERY_CUSTOMERS_TABLE_SQL = `-- Run this SQL in your Supabase SQL Editor to create the jewellery_customers table:
@@ -107,7 +116,10 @@ CREATE TABLE IF NOT EXISTS public.jewellery_customers (
     upi_transaction_id VARCHAR(100) NOT NULL,
     payment_status VARCHAR(50) DEFAULT 'Paid',
     order_status VARCHAR(50) DEFAULT 'Processing',
-    notes TEXT
+    notes TEXT,
+    tracking_courier TEXT,
+    tracking_number TEXT,
+    tracking_url TEXT
 );
 
 -- Enable Row Level Security (RLS)
@@ -1190,6 +1202,9 @@ export async function fetchSupabaseJewelleryCustomers(): Promise<JewelleryCustom
       paymentStatus: (row.payment_status as any) || 'Paid',
       orderStatus: (row.order_status as any) || 'Processing',
       notes: row.notes || '',
+      trackingCourier: row.tracking_courier || undefined,
+      trackingNumber: row.tracking_number || undefined,
+      trackingUrl: row.tracking_url || undefined,
     }));
   } catch (err) {
     console.warn('Supabase jewellery_customers query failed:', err);
@@ -1226,6 +1241,9 @@ export async function insertSupabaseJewelleryCustomer(
       payment_status: customer.paymentStatus || 'Paid',
       order_status: customer.orderStatus || 'Processing',
       notes: customer.notes || '',
+      tracking_courier: customer.trackingCourier || null,
+      tracking_number: customer.trackingNumber || null,
+      tracking_url: customer.trackingUrl || null,
     };
 
     // Update-if-exists by order_ref — the payment verification function may
@@ -1276,6 +1294,48 @@ export async function insertSupabaseJewelleryCustomer(
   } catch (err: any) {
     console.error('Failed to insert customer details to Supabase:', err);
     return { success: false, isConfigured: true, error: err?.message || 'Network error connecting to Supabase.' };
+  }
+}
+
+/**
+ * Update consignment / tracking details for a jewellery customer order or booking.
+ */
+export interface JewelleryTrackingInput {
+  trackingCourier?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
+}
+
+export async function updateSupabaseJewelleryTracking(
+  table: 'jewellery_customers' | 'jewellery_bookings',
+  idOrRef: string,
+  tracking: JewelleryTrackingInput
+): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+
+  const refColumn = table === 'jewellery_customers' ? 'order_ref' : 'booking_ref';
+
+  const payload: Record<string, string | null> = {};
+  if (tracking.trackingCourier !== undefined) payload.tracking_courier = tracking.trackingCourier || null;
+  if (tracking.trackingNumber !== undefined) payload.tracking_number = tracking.trackingNumber || null;
+  if (tracking.trackingUrl !== undefined) payload.tracking_url = tracking.trackingUrl || null;
+
+  if (Object.keys(payload).length === 0) return true;
+
+  try {
+    const { error } = await supabase
+      .from(table)
+      .update(payload)
+      .or(`id.eq.${idOrRef},${refColumn}.eq.${idOrRef}`);
+
+    if (error) {
+      console.error(`Supabase update tracking (${table}) error:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Failed to update tracking details in Supabase:', err);
+    return false;
   }
 }
 
@@ -1371,6 +1431,9 @@ export async function fetchSupabaseJewelleryBookings(): Promise<JewelleryBooking
       transactionId: row.transaction_id || '',
       status: (row.status as any) || 'Active Rental',
       notes: row.notes || '',
+      trackingCourier: row.tracking_courier || undefined,
+      trackingNumber: row.tracking_number || undefined,
+      trackingUrl: row.tracking_url || undefined,
     }));
   } catch (err) {
     console.warn('Supabase jewellery_bookings query failed:', err);
@@ -1409,6 +1472,9 @@ export async function insertSupabaseJewelleryBooking(
       payment_method: booking.paymentMethod || 'Google Pay / UPI',
       transaction_id: booking.transactionId || '',
       status: booking.status || 'Active Rental',
+      tracking_courier: booking.trackingCourier || null,
+      tracking_number: booking.trackingNumber || null,
+      tracking_url: booking.trackingUrl || null,
       notes: booking.notes || '',
     };
 
@@ -1736,6 +1802,9 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         transactionId: row.transaction_id || '',
         status: (row.status as any) || 'Active Rental',
         notes: row.notes || '',
+        trackingCourier: row.tracking_courier || undefined,
+        trackingNumber: row.tracking_number || undefined,
+        trackingUrl: row.tracking_url || undefined,
       }));
     }
 
@@ -1769,6 +1838,9 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         paymentMethod: jb.paymentMethod,
         transactionId: jb.transactionId,
         totalAmount: jb.totalPrice,
+        trackingCourier: jb.trackingCourier,
+        trackingNumber: jb.trackingNumber,
+        trackingUrl: jb.trackingUrl,
       });
     }
 
@@ -1803,6 +1875,9 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
         paymentStatus: (row.payment_status as any) || 'Paid',
         orderStatus: (row.order_status as any) || 'Processing',
         notes: row.notes || '',
+        trackingCourier: row.tracking_courier || undefined,
+        trackingNumber: row.tracking_number || undefined,
+        trackingUrl: row.tracking_url || undefined,
       }));
 
       // Merge customer order details into the same ref-keyed card (or create one)
@@ -1827,6 +1902,9 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
           itemPrice: jc.itemPrice,
           shippingFee: jc.shippingFee,
           deliveryAddress: jc.deliveryAddress,
+          trackingCourier: jc.trackingCourier,
+          trackingNumber: jc.trackingNumber,
+          trackingUrl: jc.trackingUrl,
         };
         if (existing) {
           // Rental window (From/To) comes from jewellery_bookings; the order
@@ -1843,6 +1921,9 @@ export async function fetchAllUserBookingsAndOrdersByPhone(
             deliveryAddress: orderCard.deliveryAddress,
             image: orderCard.image,
             id: orderCard.id,
+            trackingCourier: orderCard.trackingCourier || existing.trackingCourier,
+            trackingNumber: orderCard.trackingNumber || existing.trackingNumber,
+            trackingUrl: orderCard.trackingUrl || existing.trackingUrl,
           });
         } else {
           rentalsByRef.set(jc.orderRef, orderCard);
@@ -1938,22 +2019,19 @@ export async function getCurrentCustomerAccount(): Promise<CustomerAccount | nul
       }
     }
 
-    // 3) Fallback: auto-create a minimal profile from auth metadata
+    // 3) Fallback: never auto-create on a read-only lookup — just return a
+    //    session-derived skeleton. Profile creation belongs in signup/sign-in,
+    //    not here (it caused a NOT NULL violation retry loop on legacy tables).
     if (!profile && authUser.email) {
       const meta = (authUser as any).user_metadata || {};
-      const { data: created } = await supabase
-        .from('customer_accounts')
-        .insert([{
-          id: authUser.id,
-          name: meta.name || authUser.email.split('@')[0],
-          email: authUser.email,
-          phone: meta.phone || '',
-          wishlist: [],
-          cart: [],
-        }])
-        .select()
-        .maybeSingle();
-      profile = created || null;
+      return {
+        id: authUser.id,
+        name: meta.name || authUser.email.split('@')[0],
+        email: authUser.email,
+        phone: meta.phone || '',
+        wishlist: [],
+        cart: [],
+      };
     }
 
     if (!profile) return null;

@@ -10,6 +10,7 @@ import { STUDIO_INFO } from '../data/mockData';
 import { formatDateDDMMYY, getDateBadgeParts } from '../lib/dateFormat';
 import { openPrintableReceipt } from '../lib/receipt';
 import { DateInputDDMMYY } from '../components/DateInputDDMMYY';
+import { buildTrackingUrl } from '../lib/tracking';
 
 // Canonical slots — must match HennaBookingView / CheckAvailabilityView exactly.
 // The old reschedule modal offered '09:00 AM', '11:00 AM', … which never
@@ -720,13 +721,13 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
             const isHenna = type === 'henna';
             const status = getBookingStatus(booking);
             const paymentStatus = (booking as any).paymentStatus;
-            const trackingUrl = (booking as JewelleryRental).trackingUrl;
-            const deliveryAddress = (booking as JewelleryRental).deliveryAddress;
-            const trackingNumber = (booking as JewelleryRental).trackingNumber;
-
+            const jb = booking as JewelleryRental;
+            const trackingCourier = jb.trackingCourier;
+            const deliveryAddress = jb.deliveryAddress;
+            const trackingNumber = jb.trackingNumber;
+            const resolvedTrackUrl = jb.trackingUrl || buildTrackingUrl(trackingCourier, trackingNumber) || (trackingNumber ? `https://www.google.com/search?q=${encodeURIComponent(`${trackingCourier || ''} ${trackingNumber} tracking`)}` : undefined);
             const badge = getDateBadgeParts(getBookingDate(booking));
             const isPaid = paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed';
-            const jb = booking as JewelleryRental;
             // Rentals only: hide reschedule on courier-delivery purchase orders.
             const isJewelleryRental = type !== 'jewellery'
               || jb.bookingType === 'Rental'
@@ -807,16 +808,17 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                       Reschedule
                     </button>
                   )}
-                  {(trackingUrl || (trackingNumber && deliveryAddress)) && (
+                  {resolvedTrackUrl && (
                     <a
-                      href={trackingUrl || '#'}
+                      href={resolvedTrackUrl}
                       target="_blank"
                       rel="noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      title="Track Shipment"
-                      className="inline-flex items-center justify-center rounded-xl border border-[var(--sc-border)] px-3 py-2.5 text-xs font-semibold text-[var(--sc-text)] transition-colors hover:bg-[var(--sc-accent-warm)]"
+                      title={trackingNumber ? `Track parcel · AWB: ${trackingNumber}${trackingCourier ? ` (${trackingCourier})` : ''}` : 'Track Shipment'}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-500/50 bg-blue-50 px-3 py-2.5 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100"
                     >
                       <span className="material-symbols-outlined text-sm leading-none">local_shipping</span>
+                      <span>Track Now</span>
                     </a>
                   )}
                   <a
@@ -939,6 +941,38 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                       : ((booking as JewelleryRental).deliveryAddress || 'Studio Pickup')}
                   </p>
                 </section>
+
+                {/* Shipment tracking — only when the studio has entered a consignment number */}
+                {(() => {
+                  const t = booking as JewelleryRental;
+                  const awb = t.trackingNumber;
+                  const url = t.trackingUrl || buildTrackingUrl(t.trackingCourier, awb) || (awb ? `https://www.google.com/search?q=${encodeURIComponent(`${t.trackingCourier || ''} ${awb} tracking`)}` : undefined);
+                  if (!awb && !t.trackingCourier && !t.trackingUrl) return null;
+                  return (
+                    <section>
+                      <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-700">
+                        <span className="material-symbols-outlined text-sm leading-none">local_shipping</span> Shipment / Tracking
+                      </h4>
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-500/30 bg-blue-50/60 p-4">
+                        <div className="min-w-0">
+                          {t.trackingCourier && <p className="text-[10px] font-bold uppercase tracking-wider text-blue-800">{t.trackingCourier}</p>}
+                          <p className="font-mono text-sm font-bold text-blue-900 mt-0.5 break-all">{awb || t.trackingUrl}</p>
+                        </div>
+                        {url && (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-500"
+                          >
+                            <span className="material-symbols-outlined text-base leading-none">open_in_new</span>
+                            Track Now
+                          </a>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })()}
 
                 <div className="flex flex-wrap justify-between items-center gap-2 border-t border-[var(--sc-border)] pt-4">
                   <button

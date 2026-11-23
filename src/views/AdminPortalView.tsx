@@ -18,8 +18,10 @@ import {
   addSupabaseDisabledSlot,
   deleteSupabaseDisabledSlot,
   testSupabaseConnection,
+  updateSupabaseJewelleryTracking,
   SupabaseDiagnosticResult,
 } from '../lib/supabaseService';
+import { COURIER_OPTIONS, buildTrackingUrl } from '../lib/tracking';
 import {
   getSupabaseCredentials,
 } from '../lib/supabase';
@@ -113,6 +115,74 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
   // Jewellery Bookings State (jewellery_bookings Table)
   const [jewelleryBookingsList, setJewelleryBookingsList] = useState<JewelleryBooking[]>([]);
+
+  // Tracking / consignment details modal (AWB entry)
+  const [trackingModal, setTrackingModal] = useState<{
+    table: 'jewellery_customers' | 'jewellery_bookings';
+    idOrRef: string;
+  } | null>(null);
+  const [trackCourier, setTrackCourier] = useState<string>('');
+  const [trackNumber, setTrackNumber] = useState<string>('');
+  const [trackUrl, setTrackUrl] = useState<string>('');
+  const [isSavingTracking, setIsSavingTracking] = useState<boolean>(false);
+  const [trackingMsg, setTrackingMsg] = useState<string | null>(null);
+
+  const openTrackingModal = (
+    table: 'jewellery_customers' | 'jewellery_bookings',
+    idOrRef: string,
+    existing?: { trackingCourier?: string; trackingNumber?: string; trackingUrl?: string }
+  ) => {
+    setTrackingModal({ table, idOrRef });
+    setTrackCourier(existing?.trackingCourier || '');
+    setTrackNumber(existing?.trackingNumber || '');
+    setTrackUrl(existing?.trackingUrl || buildTrackingUrl(existing?.trackingCourier, existing?.trackingNumber) || '');
+    setTrackingMsg(null);
+  };
+
+  const handleTrackCourierChange = (courier: string) => {
+    setTrackCourier(courier);
+    // Auto-suggest the public tracking URL for known couriers
+    const auto = buildTrackingUrl(courier, trackNumber.trim());
+    if (auto) setTrackUrl(auto);
+  };
+
+  const handleTrackNumberChange = (value: string) => {
+    setTrackNumber(value);
+    const auto = buildTrackingUrl(trackCourier, value.trim());
+    if (auto) setTrackUrl(auto);
+  };
+
+  const handleSaveTracking = async () => {
+    if (!trackingModal) return;
+    const number = trackNumber.trim();
+    if (!number && !trackUrl.trim()) {
+      setTrackingMsg('Enter at least a consignment / AWB number (or a tracking URL).');
+      return;
+    }
+    setIsSavingTracking(true);
+    setTrackingMsg(null);
+    const ok = await updateSupabaseJewelleryTracking(trackingModal.table, trackingModal.idOrRef, {
+      trackingCourier: trackCourier,
+      trackingNumber: number,
+      trackingUrl: trackUrl.trim(),
+    });
+    setIsSavingTracking(false);
+    if (!ok) {
+      setTrackingMsg('Could not save tracking details. Please try again.');
+      return;
+    }
+    const fields = { trackingCourier: trackCourier || undefined, trackingNumber: number || undefined, trackingUrl: trackUrl.trim() || undefined };
+    if (trackingModal.table === 'jewellery_customers') {
+      setCustomersList((prev) =>
+        prev.map((c) => ((c.id || c.orderRef) === trackingModal.idOrRef ? { ...c, ...fields } : c))
+      );
+    } else {
+      setJewelleryBookingsList((prev) =>
+        prev.map((b) => ((b.id || b.bookingRef) === trackingModal.idOrRef ? { ...b, ...fields } : b))
+      );
+    }
+    setTrackingModal(null);
+  };
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [showBookingsSqlModal, setShowBookingsSqlModal] = useState(false);
   const [copiedBookingsSql, setCopiedBookingsSql] = useState(false);
@@ -1437,6 +1507,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                             >
                               {cust.orderStatus}
                             </span>
+                            {(cust.trackingNumber || cust.trackingCourier) && (
+                              <p className="text-[9px] text-blue-300 font-mono font-bold mt-1 block w-max" title={cust.trackingUrl || ''}>
+                                AWB: {cust.trackingNumber || '—'}{cust.trackingCourier ? ` · ${cust.trackingCourier}` : ''}
+                              </p>
+                            )}
                           </td>
 
                           <td className="p-3.5 text-right space-x-1.5 whitespace-nowrap">
@@ -1465,6 +1540,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                             >
                               <span className="material-symbols-outlined text-sm">chat</span>
                             </a>
+
+                            <button
+                              onClick={() => openTrackingModal('jewellery_customers', cust.id || cust.orderRef, cust)}
+                              className="p-1.5 bg-blue-500/15 hover:bg-blue-500/30 text-blue-400 rounded transition-colors"
+                              title="Add / Edit Tracking (AWB)"
+                            >
+                              <span className="material-symbols-outlined text-sm">local_shipping</span>
+                            </button>
 
                             <button
                               onClick={() => handleDeleteCustomer(cust.id || cust.orderRef)}
@@ -1645,6 +1728,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                             >
                               {bk.status}
                             </span>
+                            {(bk.trackingNumber || bk.trackingCourier) && (
+                              <p className="text-[9px] text-blue-300 font-mono font-bold mt-1 block w-max" title={bk.trackingUrl || ''}>
+                                AWB: {bk.trackingNumber || '—'}{bk.trackingCourier ? ` · ${bk.trackingCourier}` : ''}
+                              </p>
+                            )}
                           </td>
 
                           <td className="p-3.5 text-right space-x-1.5 whitespace-nowrap">
@@ -1674,6 +1762,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                             >
                               <span className="material-symbols-outlined text-sm">chat</span>
                             </a>
+
+                            <button
+                              onClick={() => openTrackingModal('jewellery_bookings', bk.id || bk.bookingRef, bk)}
+                              className="p-1.5 bg-blue-500/15 hover:bg-blue-500/30 text-blue-400 rounded transition-colors"
+                              title="Add / Edit Tracking (AWB)"
+                            >
+                              <span className="material-symbols-outlined text-sm">local_shipping</span>
+                            </button>
 
                             <button
                               onClick={() => handleDeleteBookingRecord(bk.id || bk.bookingRef)}
@@ -2381,6 +2477,86 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TRACKING / CONSIGNMENT MODAL (AWB entry) */}
+      {trackingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="bg-[var(--sc-surface-alt-card)] rounded-2xl max-w-md w-full border border-blue-500/40 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[var(--sc-border-dark)] p-4">
+              <h3 className="font-serif font-bold text-white flex items-center gap-2">
+                <span className="material-symbols-outlined text-blue-400 text-xl">local_shipping</span>
+                Shipment Tracking (AWB)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setTrackingModal(null)}
+                className="p-1.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] rounded-full text-white transition-colors cursor-pointer"
+                aria-label="Close"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-[#8A7F72] uppercase tracking-wider mb-1.5">Courier / Carrier</label>
+                <select
+                  value={trackCourier}
+                  onChange={(e) => handleTrackCourierChange(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">Select courier…</option>
+                  {COURIER_OPTIONS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-[#8A7F72] uppercase tracking-wider mb-1.5">Consignment / AWB Number</label>
+                <input
+                  type="text"
+                  value={trackNumber}
+                  onChange={(e) => handleTrackNumberChange(e.target.value)}
+                  placeholder="e.g. 1234567890123"
+                  autoFocus
+                  className="w-full px-3.5 py-2.5 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white font-mono placeholder-[#8A7F72] focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-[#8A7F72] uppercase tracking-wider mb-1.5">Tracking URL <span className="font-normal normal-case text-[#5F9E7D]">(auto-filled when we know the courier — editable)</span></label>
+                <input
+                  type="url"
+                  value={trackUrl}
+                  onChange={(e) => setTrackUrl(e.target.value)}
+                  placeholder="https://… (paste your courier's tracking link if different)"
+                  className="w-full px-3.5 py-2.5 bg-[var(--sc-surface-alt)] border border-[var(--sc-border-dark)] rounded-xl text-xs text-white font-mono placeholder-[#8A7F72] focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-[10px] text-[#8A7F72] mt-1.5 leading-snug">The customer sees a <span className="text-[#E0B45F] font-bold">Track Now</span> button on their My Bookings page once this is saved.</p>
+              </div>
+              {trackingMsg && (
+                <p className="text-[11px] text-amber-300 font-semibold bg-amber-950/40 border border-amber-800/60 rounded-lg px-3 py-2">{trackingMsg}</p>
+              )}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setTrackingModal(null)}
+                  className="px-4 py-2.5 bg-[var(--sc-surface-alt)] hover:bg-[var(--sc-border-dark)] text-white font-bold text-xs rounded-xl border border-[var(--sc-border-dark)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTracking}
+                  disabled={isSavingTracking}
+                  className="px-5 py-2.5 bg-blue-500 hover:bg-blue-400 disabled:opacity-60 text-[#10233a] font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className={`material-symbols-outlined text-sm ${isSavingTracking ? 'animate-spin' : ''}`}>{isSavingTracking ? 'refresh' : 'save'}</span>
+                  <span>{isSavingTracking ? 'Saving…' : 'Save Tracking'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

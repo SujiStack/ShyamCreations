@@ -95,6 +95,8 @@ export interface JewelleryRental {
   trackingUrl?: string;
   /** 'Rental' | 'Purchase' — set for orders fetched from jewellery_bookings */
   bookingType?: string;
+  /** Consignment / tracking details for couriered orders */
+  trackingCourier?: string;
 }
 
 export interface VisionaryArtist {
@@ -164,6 +166,10 @@ export interface JewelleryCustomer {
   paymentStatus: string;
   orderStatus: string;
   notes?: string;
+  /** Consignment / tracking details for couriered orders */
+  trackingCourier?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
 }
 
 export interface JewelleryBooking {
@@ -188,4 +194,8 @@ export interface JewelleryBooking {
   transactionId?: string;
   status: string;
   notes?: string;
+  /** Consignment / tracking details for couriered orders */
+  trackingCourier?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
 }
