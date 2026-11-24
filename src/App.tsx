@@ -150,9 +150,9 @@ export function App() {
           const mapped: DisabledSlot[] = (dbSlots || [])
             .filter((s: any) => s?.date && s?.slot)
             .map((s: any) => ({ date: s.date, timeSlot: s.slot, reason: s.status && s.status !== 'disabled' ? s.status : undefined }));
-          if (mapped.length > 0) {
-            setDisabledSlots(mapped);
-          }
+          // Always apply (even when empty) so slots removed by the admin
+          // disappear from booking / availability checks after a reload.
+          setDisabledSlots(mapped);
         } catch (e) {
           console.warn('Failed to load disabled slots from DB:', e);
         }

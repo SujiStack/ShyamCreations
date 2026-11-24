@@ -727,21 +727,44 @@ export async function deleteSupabaseBooking(refOrId: string): Promise<boolean> {
 
 /**
  * Availability / Disabled slots API using bookings_availability table
+ *
+ * Slots can live in either `bookings_availability` (current table) or the
+ * legacy `disabled_slots` table: writes fall back to the legacy table when
+ * the primary insert is rejected (e.g. a missing RLS policy for the anon
+ * role). Reads must therefore union BOTH sources, otherwise admin-disabled
+ * slots silently disappear from booking + availability checks.
  */
 export async function fetchSupabaseDisabledSlots(): Promise<DBDisabledSlotRow[]> {
   if (!isSupabaseConfigured()) return [];
 
+  const rows: DBDisabledSlotRow[] = [];
+
   try {
     const { data, error } = await supabase.from('bookings_availability').select('*');
-    if (error || !data) {
-      // Fallback to disabled_slots table if needed
-      const fallback = await supabase.from('disabled_slots').select('*');
-      return fallback.data || [];
+    if (!error && data) {
+      rows.push(...data);
     }
-    return data;
-  } catch {
-    return [];
+  } catch (err) {
+    console.warn('[Supabase] bookings_availability read failed:', err);
   }
+
+  try {
+    const { data, error } = await supabase.from('disabled_slots').select('*');
+    if (!error && data) {
+      rows.push(...data);
+    }
+  } catch {
+    // Legacy table may not exist on fresh installs — optional source.
+  }
+
+  const seen = new Set<string>();
+  return rows.filter((r) => {
+    if (!r?.date || !r?.slot) return false;
+    const key = `${r.date}|${r.slot}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function addSupabaseDisabledSlot(date: string, slot: string, status: string = 'disabled'): Promise<boolean> {
@@ -762,25 +785,34 @@ export async function addSupabaseDisabledSlot(date: string, slot: string, status
 export async function deleteSupabaseDisabledSlot(date: string, slot: string): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
 
+  let ok = false;
+
+  // Delete from BOTH tables — a slot may live in either one depending on
+  // which path created it. Deleting only the primary table leaves legacy
+  // rows behind, so the slot reappears after reload.
   try {
     const { error } = await supabase
       .from('bookings_availability')
       .delete()
       .eq('date', date)
       .eq('slot', slot);
-
-    if (error) {
-      const fallback = await supabase
-        .from('disabled_slots')
-        .delete()
-        .eq('date', date)
-        .eq('slot', slot);
-      return !fallback.error;
-    }
-    return true;
+    if (!error) ok = true;
   } catch {
-    return false;
+    /* primary unavailable — legacy delete below may still succeed */
   }
+
+  try {
+    const { error } = await supabase
+      .from('disabled_slots')
+      .delete()
+      .eq('date', date)
+      .eq('slot', slot);
+    if (!error) ok = true;
+  } catch {
+    /* legacy table may not exist */
+  }
+
+  return ok;
 }
 
 /**

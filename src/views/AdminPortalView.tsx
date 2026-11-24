@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import { ViewMode, Product, HennaBooking, JewelleryRental, JewelleryCustomer, JewelleryBooking, DisabledSlot } from '../types';
 import {
   isSupabaseConfigured,
@@ -1861,8 +1862,21 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   <label className="text-[10px] font-bold uppercase tracking-wider text-[#8A7F72]">&nbsp;</label>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       if (!newSlotDate) return;
+                      // Persist first — only commit to the UI once the slot is
+                      // actually saved, otherwise the admin sees a slot that
+                      // vanishes on reload (silent DB failure).
+                      const saved = await addSupabaseDisabledSlot(newSlotDate, newSlotTime, newSlotReason || 'disabled');
+                      if (!saved) {
+                        Swal.fire({
+                          icon: 'error',
+                          title: 'Could Not Disable Slot',
+                          text: 'The slot could not be saved to the database. Check the Supabase connection and try again.',
+                          confirmButtonColor: 'var(--sc-emerald)',
+                        });
+                        return;
+                      }
                       const newSlot: DisabledSlot = {
                         date: newSlotDate,
                         timeSlot: newSlotTime,
@@ -1871,9 +1885,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       const updated = [...dbDisabledSlots, newSlot];
                       setDbDisabledSlots(updated);
                       onUpdateDisabledSlots?.(updated);
-                      // Persist to DB too, so other devices' booking and
-                      // reschedule slot checks see this disabled slot.
-                      void addSupabaseDisabledSlot(newSlotDate, newSlotTime, newSlotReason || 'disabled');
                       setNewSlotDate('');
                       setNewSlotTime('Morning Slot (09:00 AM - 01:00 PM)');
                       setNewSlotReason('');
@@ -1931,14 +1942,26 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           </td>
                           <td className="p-3.5 text-right">
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 const removed = dbDisabledSlots[idx];
+                                if (!removed) return;
+                                // Remove from the DB first; only update the
+                                // UI once the delete is confirmed so a
+                                // silently-failed re-enable can't resurrect
+                                // the slot on the next load.
+                                const deleted = await deleteSupabaseDisabledSlot(removed.date, removed.timeSlot);
+                                if (!deleted) {
+                                  Swal.fire({
+                                    icon: 'error',
+                                    title: 'Could Not Enable Slot',
+                                    text: 'The slot is still disabled in the database. Check the Supabase connection and try again.',
+                                    confirmButtonColor: 'var(--sc-emerald)',
+                                  });
+                                  return;
+                                }
                                 const updated = dbDisabledSlots.filter((_, i) => i !== idx);
                                 setDbDisabledSlots(updated);
                                 onUpdateDisabledSlots?.(updated);
-                                if (removed) {
-                                  void deleteSupabaseDisabledSlot(removed.date, removed.timeSlot);
-                                }
                               }}
                               className="p-1.5 hover:bg-green-500/20 text-green-400 rounded transition-colors"
                               title="Enable Slot (Remove from disabled list)"
