@@ -581,6 +581,47 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     return { label: raw, tone: 'pending' };
   };
 
+  // Parse the first ₹ amount in a string to a number ("₹2,000" -> 2000).
+  const parseRupees = (v?: string | null): number | null => {
+    if (!v) return null;
+    const m = String(v).match(/₹\s*([\d,]+(?:\.\d+)?)/);
+    if (!m) return null;
+    const n = Number(m[1].replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  const inr = (n: number): string => `₹${n.toLocaleString('en-IN')}`;
+
+  // Full price, amount actually paid, and the balance still due — as numbers.
+  // The card shows the paid amount up front and reveals `remaining` on "Show".
+  const getPaymentBreakdown = (
+    b: any,
+    isHenna: boolean
+  ): { total: number | null; paid: number | null; remaining: number | null } => {
+    const total = isHenna
+      ? (parseRupees(b?.totalPrice) ??
+        parseRupees(String(b?.serviceName || '').match(/₹[\d,]+(?:\.\d+)?/g)?.slice(-1)[0]) ??
+        parseRupees(b?.paymentAmount))
+      : (parseRupees(b?.totalAmount) ?? parseRupees(b?.totalPrice));
+
+    const tone = paymentTone(b?.paymentStatus);
+    const isAdvance =
+      /advance/i.test(String(b?.paymentStatus || '')) ||
+      /advance paid/i.test(String(b?.specialRequests || ''));
+    const paidFromField =
+      parseRupees(b?.paymentAmount) ??
+      parseRupees(String(b?.specialRequests || '').match(/₹[\d,]+(?:\.\d+)?/)?.[0]);
+
+    let paid: number | null;
+    if (isAdvance) paid = paidFromField ?? 0; // only the advance is paid so far
+    else if (tone === 'paid') paid = paidFromField ?? total; // paid in full
+    else if (tone === 'failed' || tone === 'refunded') paid = 0;
+    else paid = paidFromField ?? 0; // pending / unknown
+
+    const remaining =
+      total != null && paid != null ? Math.max(0, total - paid) : null;
+    return { total, paid, remaining };
+  };
+
   return (
     <div className="pt-24 pb-20 px-4 md:px-8 max-w-6xl mx-auto min-h-screen bg-[var(--sc-bg-soft)]">
       {/* Header */}
@@ -727,6 +768,8 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
             const trackingNumber = jb.trackingNumber;
             const resolvedTrackUrl = jb.trackingUrl || buildTrackingUrl(trackingCourier, trackingNumber) || (trackingNumber ? `https://www.google.com/search?q=${encodeURIComponent(`${trackingCourier || ''} ${trackingNumber} tracking`)}` : undefined);
             const badge = getDateBadgeParts(getBookingDate(booking));
+            const pay = getPaymentBreakdown(booking, isHenna);
+            const paidDisplay = pay.paid != null ? inr(pay.paid) : '—';
             const isPaid = paymentStatus === 'Paid' || paymentStatus === 'Completed' || paymentStatus === 'confirmed';
             // Rentals only: hide reschedule on courier-delivery purchase orders.
             const isJewelleryRental = type !== 'jewellery'
@@ -750,7 +793,10 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                 <div className="flex items-start justify-between gap-3">
                   <div className={`flex w-14 shrink-0 flex-col items-center justify-center rounded-xl px-2 py-2.5 ${isHenna ? 'bg-[var(--sc-emerald-deep)] text-[var(--sc-emerald-lux)]' : 'border border-[#E8CE9B] bg-[#F7EEDD] text-[#6F4A18]'}`}>
                     <span className="text-[9px] font-bold uppercase tracking-[0.2em]">{badge.month}</span>
-                    <span className="font-serif text-2xl font-bold leading-none">{badge.day}</span>
+                    {/* text-inherit overrides the global `.font-serif { color: var(--sc-text) }`
+                        rule so the day number takes the badge's gold/brown text color
+                        instead of rendering near-black on the black Mehendi badge. */}
+                    <span className="font-serif text-2xl font-bold leading-none text-inherit">{badge.day}</span>
                   </div>
                   {isHenna ? (
                     paymentStatus ? (
@@ -792,9 +838,15 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                     <dd className="text-right font-semibold leading-snug text-[var(--sc-text)]">{slotLabel}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">Amount</dt>
-                    <dd className="font-bold text-[var(--sc-text)]">{getActualPrice(booking, isHenna)}</dd>
+                    <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">Paid Amount</dt>
+                    <dd className="font-bold text-[var(--sc-text)]">{paidDisplay}</dd>
                   </div>
+                  {pay.remaining != null && pay.remaining > 0 && (
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-dimmer)]">Balance</dt>
+                      <dd className="font-bold text-amber-700">{inr(pay.remaining)}</dd>
+                    </div>
+                  )}
                 </dl>
 
                 {/* Actions pinned to the bottom of the square card */}
@@ -930,17 +982,19 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                   </dl>
                 </section>
 
-                {/* Address only — just the address text */}
-                <section>
-                  <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--sc-emerald-dark)]">
-                    <span className="material-symbols-outlined text-sm leading-none">location_on</span> Address
-                  </h4>
-                  <p className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-bg-soft)] p-4 font-semibold leading-relaxed text-[var(--sc-text)]">
-                    {isHenna
-                      ? ((booking as HennaBooking).deliveryAddress || (booking as HennaBooking).location || 'Studio / Client Venue')
-                      : ((booking as JewelleryRental).deliveryAddress || 'Studio Pickup')}
-                  </p>
-                </section>
+                {/* Address — jewellery orders only. Mehendi appointments have no
+                    postal address (only a studio/venue location), so showing an
+                    "Address" here mixed jewellery data into Mehendi bookings. */}
+                {!isHenna && (
+                  <section>
+                    <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--sc-emerald-dark)]">
+                      <span className="material-symbols-outlined text-sm leading-none">location_on</span> Address
+                    </h4>
+                    <p className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-bg-soft)] p-4 font-semibold leading-relaxed text-[var(--sc-text)]">
+                      {(booking as JewelleryRental).deliveryAddress || 'Studio Pickup'}
+                    </p>
+                  </section>
+                )}
 
                 {/* Shipment tracking — only when the studio has entered a consignment number */}
                 {(() => {
@@ -978,8 +1032,11 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                   <button
                     onClick={() => {
                       const anyBooking = booking as any;
+                      // Address is a jewellery-only field — Mehendi bookings must
+                      // not print an "Address:" line (avoids mixing jewellery
+                      // data into a Mehendi receipt).
                       const address = isHenna
-                        ? ((booking as HennaBooking).deliveryAddress || (booking as HennaBooking).location || 'Studio / Client Venue')
+                        ? undefined
                         : ((booking as JewelleryRental).deliveryAddress || 'Studio Pickup');
                       const jewellerySummary = [
                         ...(anyBooking.itemPrice ? [{ label: 'Item Price', value: anyBooking.itemPrice }] : []),

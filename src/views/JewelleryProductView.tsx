@@ -157,7 +157,10 @@ export const JewelleryProductView: React.FC<JewelleryProductViewProps> = ({
     e.stopPropagation();
     if ((prod.stock ?? 1) <= 0) { showToast(`⚠️ ${prod.name} is out of stock.`); return; }
     const qty = getProductQty(prod.id);
-    if (onAddToCart) { onAddToCart(prod, qty); showToast(`🛍️ Added ${qty}x ${prod.name} to bag!`); }
+    if (onAddToCart) {
+      onAddToCart(prod, qty);
+      if (isAuthenticated) showToast(`🛍️ Added ${qty}x ${prod.name} to bag!`);
+    }
   };
 
   // Buy for Sale items, Rent for Rental items — the button label, icon and

@@ -110,7 +110,11 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
     }
   }, [customerUser]);
   const [occasion, setOccasion] = useState<string>('Select Occasion');
-  const today = new Date().toISOString().split('T')[0];
+  // const today = new Date().toISOString().split('T')[0];
+  const date = new Date();
+  date.setDate(date.getDate() + 2);
+  const today = date.toISOString().split('T')[0];
+
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [selectedMehendiService, setSelectedMehendiService] = useState<string>('minimal-design');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
@@ -594,17 +598,15 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
             </div>
 
             {/* Automatic Email Confirmation Banner */}
-            <div className={`p-3.5 border rounded-2xl text-[11px] text-left space-y-1.5 shadow-xs ${
-              emailStatus?.clientEmailSent ? 'bg-emerald-50 border-emerald-200/80 text-emerald-900' : 'bg-amber-50 border-amber-200/80 text-amber-900'
-            }`}>
+            <div className={`p-3.5 border rounded-2xl text-[11px] text-left space-y-1.5 shadow-xs ${emailStatus?.clientEmailSent ? 'bg-emerald-50 border-emerald-200/80 text-emerald-900' : 'bg-amber-50 border-amber-200/80 text-amber-900'
+              }`}>
               <div className="flex items-center justify-between font-bold">
                 <div className="flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-base">mark_email_read</span>
                   <span>Email Dispatch Status</span>
                 </div>
-                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
-                  emailStatus?.clientEmailSent ? 'bg-emerald-200/80 text-emerald-900' : 'bg-amber-200/80 text-amber-900'
-                }`}>
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${emailStatus?.clientEmailSent ? 'bg-emerald-200/80 text-emerald-900' : 'bg-amber-200/80 text-amber-900'
+                  }`}>
                   {emailStatus?.clientEmailSent ? '✓ Delivered' : '⚠️ Pending'}
                 </span>
               </div>
@@ -693,415 +695,410 @@ export const HennaBookingView: React.FC<HennaBookingViewProps> = ({
           </p>
         </div>
 
-          {/* Form Main Body */}
-          <div className="p-4 sm:p-6 md:p-10 bg-[var(--sc-surface)] text-[var(--sc-text)]">
-            {!customerUser && (
-              <div className="mb-8 p-4 bg-[var(--sc-bg-soft)] border border-[var(--sc-emerald)] rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-xl">lock_open</span>
-                  </div>
-                  <div>
-                    <h4 className="font-serif font-bold text-sm text-[var(--sc-text)]">Client Sign-in Required to Book</h4>
-                    <p className="text-xs text-[var(--sc-text-dim)]">Please sign in or create an account to reserve your slot and receive confirmation updates.</p>
-                  </div>
+        {/* Form Main Body */}
+        <div className="p-4 sm:p-6 md:p-10 bg-[var(--sc-surface)] text-[var(--sc-text)]">
+          {!customerUser && (
+            <div className="mb-8 p-4 bg-[var(--sc-bg-soft)] border border-[var(--sc-emerald)] rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[var(--sc-emerald)]/10 text-[var(--sc-emerald-dark)] flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-xl">lock_open</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onRequireAuth) {
-                      onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: selectedCategory });
-                    }
-                  }}
-                  className="px-5 py-2.5 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald-light)] text-white font-bold rounded-xl text-xs tracking-wider uppercase whitespace-nowrap transition-all shadow-md cursor-pointer shrink-0"
-                >
-                  Sign In / Sign Up
-                </button>
-              </div>
-            )}
-
-            {bookingSuccess && (
-              <div className="p-5 mb-8 bg-[var(--sc-bg-soft)] text-[var(--sc-emerald-dark)] border border-[var(--sc-emerald)] rounded-2xl text-xs font-bold space-y-2 animate-in fade-in duration-300">
-                <div className="flex items-center gap-2 text-sm text-[var(--sc-text)]">
-                  <span className="material-symbols-outlined text-green-600">check_circle</span>
-                  <span>Appointment Confirmed!</span>
+                <div>
+                  <h4 className="font-serif font-bold text-sm text-[var(--sc-text)]">Client Sign-in Required to Book</h4>
+                  <p className="text-xs text-[var(--sc-text-dim)]">Please sign in or create an account to reserve your slot and receive confirmation updates.</p>
                 </div>
-                <p>Reference Code: <span className="bg-[var(--sc-emerald)] text-white px-2 py-0.5 rounded font-mono font-bold">{generatedRef}</span></p>
-
-                <p className="text-[11px] text-green-700 bg-green-50 p-2 rounded border border-green-200">
-                  ✓ Your appointment details have been recorded successfully in our studio system.
-                </p>
-
-                <p className="text-[11px] text-[var(--sc-text-dim)] pt-1">Redirecting to My Bookings portal...</p>
               </div>
-            )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onRequireAuth) {
+                    onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: selectedCategory });
+                  }
+                }}
+                className="px-5 py-2.5 bg-[var(--sc-emerald)] hover:bg-[var(--sc-emerald-light)] text-white font-bold rounded-xl text-xs tracking-wider uppercase whitespace-nowrap transition-all shadow-md cursor-pointer shrink-0"
+              >
+                Sign In / Sign Up
+              </button>
+            </div>
+          )}
 
-            <form onSubmit={handleRazorpayBooking} className="space-y-6 sm:space-y-8 md:space-y-10">
+          {bookingSuccess && (
+            <div className="p-5 mb-8 bg-[var(--sc-bg-soft)] text-[var(--sc-emerald-dark)] border border-[var(--sc-emerald)] rounded-2xl text-xs font-bold space-y-2 animate-in fade-in duration-300">
+              <div className="flex items-center gap-2 text-sm text-[var(--sc-text)]">
+                <span className="material-symbols-outlined text-green-600">check_circle</span>
+                <span>Appointment Confirmed!</span>
+              </div>
+              <p>Reference Code: <span className="bg-[var(--sc-emerald)] text-white px-2 py-0.5 rounded font-mono font-bold">{generatedRef}</span></p>
 
-               {/* SECTION 1: PERSONAL DETAILS */}
-               <div className="space-y-4 sm:space-y-6">
-                 <div className="flex items-center gap-3">
-                   <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
-                     1
-                   </div>
-                   <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
-                     Personal Details
-                   </h2>
-                 </div>
+              <p className="text-[11px] text-green-700 bg-green-50 p-2 rounded border border-green-200">
+                ✓ Your appointment details have been recorded successfully in our studio system.
+              </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                  {/* Full Name */}
-                  <div className="space-y-1.5">
-                   <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
-                       FULL NAME *
-                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={clientName}
-                      onChange={(e) => setClientName(e.target.value)}
-                      placeholder="Priya Sharma"
-                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
-                    />
-                  </div>
+              <p className="text-[11px] text-[var(--sc-text-dim)] pt-1">Redirecting to My Bookings portal...</p>
+            </div>
+          )}
 
-                  {/* Phone Number */}
-                  <div className="space-y-1.5">
-                     <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
-                       PHONE NUMBER *
-                     </label>
-                    <input
-                      type="tel"
-                      required
-                      value={clientPhone}
-                      onChange={(e) => setClientPhone(e.target.value)}
-                      placeholder="9876543210"
-                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
-                    />
-                  </div>
+          <form onSubmit={handleRazorpayBooking} className="space-y-6 sm:space-y-8 md:space-y-10">
 
-                  {/* Email Address */}
-                  <div className="space-y-1.5">
-                     <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
-                       EMAIL ADDRESS *
-                     </label>
-                    <input
-                      type="email"
-                      required
-                      value={clientEmail}
-                      onChange={(e) => setClientEmail(e.target.value)}
-                      placeholder="priya@example.com"
-                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
-                    />
-                  </div>
+            {/* SECTION 1: PERSONAL DETAILS */}
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                  1
+                </div>
+                <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
+                  Personal Details
+                </h2>
+              </div>
 
-                  {/* WhatsApp Number */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
-                        WHATSAPP NUMBER <span className="text-[10px] font-normal text-[var(--sc-text-dimmer)]">(if different)</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-[11px] text-[var(--sc-text)] cursor-pointer font-medium">
-                        <input
-                          type="checkbox"
-                          checked={sameAsPhone}
-                          onChange={(e) => setSameAsPhone(e.target.checked)}
-                          className="rounded text-[var(--sc-emerald)] focus:ring-[var(--sc-emerald)]"
-                        />
-                        <span>Same as phone</span>
-                      </label>
-                    </div>
-                    <input
-                      type="tel"
-                      value={sameAsPhone ? clientPhone : clientWa}
-                      disabled={sameAsPhone}
-                      onChange={(e) => setClientWa(e.target.value)}
-                      placeholder="Same as phone"
-                      className={`w-full px-4 py-3.5 rounded-xl border text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] shadow-xs ${
-                        sameAsPhone ? 'bg-[var(--sc-accent-warm)] border-[var(--sc-border)] text-[var(--sc-text-dimmer)]' : 'bg-[var(--sc-accent-warm)] border-[var(--sc-border)] focus:bg-[var(--sc-surface)]'
-                      }`}
-                    />
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                {/* Full Name */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                    FULL NAME *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder="Shyam Creations"
+                    className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
+                  />
+                </div>
 
-                  {/* Occasion Dropdown */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
-                      OCCASION *
+                {/* Phone Number */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                    PHONE NUMBER *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(e.target.value)}
+                    placeholder="9363710342"
+                    className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
+                  />
+                </div>
+
+                {/* Email Address */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                    EMAIL ADDRESS *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                    placeholder="shyamcreationstudio@example.com"
+                    className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
+                  />
+                </div>
+
+                {/* WhatsApp Number */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)]">
+                      WHATSAPP NUMBER <span className="text-[10px] font-normal text-[var(--sc-text-dimmer)]">(if different)</span>
                     </label>
-                    <select
-                      value={occasion}
-                      onChange={(e) => setOccasion(e.target.value)}
-                      className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs cursor-pointer"
-                    >
-                      <option value="Select Occasion">Select Occasion</option>
-                      <option value="Bridal / Wedding">Bridal / Wedding Ceremony</option>
-                      <option value="Sangeet & Mehendi Night">Sangeet & Mehendi Night</option>
-                      <option value="Engagement">Engagement</option>
-                      <option value="Festival & Pooja">Festival & Pooja (Diwali / Karwa Chauth)</option>
-                      <option value="Baby Shower / Seemantham">Baby Shower / Seemantham</option>
-                      <option value="Other Celebration">Other Celebration</option>
-                    </select>
+                    <label className="flex items-center gap-1.5 text-[11px] text-[var(--sc-text)] cursor-pointer font-medium">
+                      <input
+                        type="checkbox"
+                        checked={sameAsPhone}
+                        onChange={(e) => setSameAsPhone(e.target.checked)}
+                        className="rounded text-[var(--sc-emerald)] focus:ring-[var(--sc-emerald)]"
+                      />
+                      <span>Same as phone</span>
+                    </label>
                   </div>
+                  <input
+                    type="tel"
+                    value={sameAsPhone ? clientPhone : clientWa}
+                    disabled={sameAsPhone}
+                    onChange={(e) => setClientWa(e.target.value)}
+                    placeholder="Same as phone"
+                    className={`w-full px-4 py-3.5 rounded-xl border text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] shadow-xs ${sameAsPhone ? 'bg-[var(--sc-accent-warm)] border-[var(--sc-border)] text-[var(--sc-text-dimmer)]' : 'bg-[var(--sc-accent-warm)] border-[var(--sc-border)] focus:bg-[var(--sc-surface)]'
+                      }`}
+                  />
+                </div>
 
-                  {/* Preferred Date */}
-                  <div className="space-y-1.5">
-                     <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
-                       PREFERRED DATE *
-                     </label>
-                    <DateInputDDMMYY
-                      required
-                      value={selectedDate}
-                      onChange={setSelectedDate}
-                      min={new Date().toISOString().split('T')[0]}
-                    />
-                    {isDateFullyBooked(selectedDate) && (
-                      <p className="text-[11px] text-red-600 font-medium mt-1">⚠ This date is fully booked. Please select another date.</p>
-                    )}
-                  </div>
+                {/* Occasion Dropdown */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                    OCCASION *
+                  </label>
+                  <select
+                    value={occasion}
+                    onChange={(e) => setOccasion(e.target.value)}
+                    className="w-full px-4 py-3.5 rounded-xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs cursor-pointer"
+                  >
+                    <option value="Select Occasion">Select Occasion</option>
+                    <option value="Bridal / Wedding">Bridal / Wedding Ceremony</option>
+                    <option value="Sangeet & Mehendi Night">Sangeet & Mehendi Night</option>
+                    <option value="Engagement">Engagement</option>
+                    <option value="Festival & Pooja">Festival & Pooja (Diwali / Karwa Chauth)</option>
+                    <option value="Baby Shower / Seemantham">Baby Shower / Seemantham</option>
+                    <option value="Other Celebration">Other Celebration</option>
+                  </select>
+                </div>
 
-                  {/* Preferred Time Slot */}
-                  <div className="space-y-1.5 md:col-span-2">
-                     <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
-                       TIME SLOT (MORNING / EVENING) *
-                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {['Morning Slot (09:00 AM - 01:00 PM)', 'Evening Slot (04:00 PM - 09:00 PM)'].map((slot) => {
-                        const isBooked = isSlotBooked(selectedDate, slot);
-                        const isDisabled = isSlotDisabled(selectedDate, slot);
-                        const isSelected = selectedTime === slot;
-                        const icon = slot.includes('Morning') ? '🌅' : '🌙';
-                        const label = slot.includes('Morning') ? 'Morning Slot' : 'Evening Slot';
-                        const timeRange = slot.includes('Morning') ? '09:00 AM - 01:00 PM' : '04:00 PM - 09:00 PM';
+                {/* Preferred Date */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                    PREFERRED DATE *
+                  </label>
+                  <DateInputDDMMYY
+                    required
+                    value={selectedDate}
+                    onChange={setSelectedDate}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                  {isDateFullyBooked(selectedDate) && (
+                    <p className="text-[11px] text-red-600 font-medium mt-1">⚠ This date is fully booked. Please select another date.</p>
+                  )}
+                </div>
 
-                        return (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => {
-                              if (!isBooked && !isDisabled) setSelectedTime(slot);
-                            }}
-                            disabled={isBooked || isDisabled}
-                            className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                              isBooked || isDisabled
-                                ? 'bg-[#f5f0eb] text-[#a39c91] border-[#e8dcc4] cursor-not-allowed'
-                                : isSelected
+                {/* Preferred Time Slot */}
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--sc-text)] flex items-center gap-1" title="Required field">
+                    TIME SLOT (MORNING / EVENING) *
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {['Morning Slot (09:00 AM - 01:00 PM)', 'Evening Slot (04:00 PM - 09:00 PM)'].map((slot) => {
+                      const isBooked = isSlotBooked(selectedDate, slot);
+                      const isDisabled = isSlotDisabled(selectedDate, slot);
+                      const isSelected = selectedTime === slot;
+                      const icon = slot.includes('Morning') ? '🌅' : '🌙';
+                      const label = slot.includes('Morning') ? 'Morning Slot' : 'Evening Slot';
+                      const timeRange = slot.includes('Morning') ? '09:00 AM - 01:00 PM' : '04:00 PM - 09:00 PM';
+
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => {
+                            if (!isBooked && !isDisabled) setSelectedTime(slot);
+                          }}
+                          disabled={isBooked || isDisabled}
+                          className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${isBooked || isDisabled
+                              ? 'bg-[#f5f0eb] text-[#a39c91] border-[#e8dcc4] cursor-not-allowed'
+                              : isSelected
                                 ? 'bg-[var(--sc-emerald)] text-white border-[var(--sc-emerald)] shadow-sm'
                                 : 'bg-[var(--sc-accent-warm)] text-[var(--sc-text)] border-[var(--sc-border)] hover:border-[var(--sc-emerald)]'
                             }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl">{icon}</span>
-                              <div>
-                                <div className="font-bold text-xs">{label}</div>
-                                <div className={`text-[10px] ${isSelected ? 'text-emerald-100' : 'text-[var(--sc-text-dim)]'}`}>
-                                  {timeRange}
-                                </div>
-                                {(isBooked || isDisabled) && (
-                                  <div className="text-[10px] text-red-500 font-medium mt-0.5">
-                                    {isBooked ? '✓ Already Booked' : '✕ Slot Disabled'}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            {isSelected && (
-                              <span className="material-symbols-outlined text-sm">check_circle</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {getAvailableSlots(selectedDate).length === 0 && !isDateFullyBooked(selectedDate) && (
-                      <p className="text-[11px] text-amber-600 font-medium mt-1">No slots available for this date.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-               {/* SECTION 2: SELECT SERVICE */}
-               <div className="space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t border-[var(--sc-border)]/60">
-                 <div className="flex items-center gap-3">
-                   <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
-                     2
-                   </div>
-                   <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
-                     Select Service
-                   </h2>
-                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-                  {MEHENDI_SERVICES.map((srv) => {
-                    const isSelected = selectedMehendiService === srv.id;
-
-                    return (
-                      <div
-                        key={srv.id}
-                        onClick={() => setSelectedMehendiService(srv.id)}
-                        className={`bg-[var(--sc-surface)] rounded-2xl p-5 border cursor-pointer transition-all flex flex-col justify-between shadow-xs ${
-                          isSelected
-                            ? 'border-2 border-[var(--sc-emerald)] bg-[var(--sc-bg-soft)] ring-2 ring-[var(--sc-emerald)]/20 shadow-md'
-                            : 'border-[var(--sc-border)] hover:border-[var(--sc-emerald)]/60'
-                        }`}
-                      >
-                        <div className="space-y-2">
-                          <div className="text-2xl">{srv.icon}</div>
-                          <h3 className="font-serif font-bold text-base text-[var(--sc-text)]">
-                            {srv.title}
-                          </h3>
-                          <div className="text-xs font-bold text-[var(--sc-emerald-dark)]">
-                            {srv.price}
-                          </div>
-                          <p className="text-[11px] text-[var(--sc-text-dim)]">
-                            {srv.subtext}
-                          </p>
-                        </div>
-
-                        <div className="pt-4">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--sc-emerald-dark)] bg-[var(--sc-emerald)]/10 px-3 py-1 rounded-full border border-[var(--sc-emerald)]/20">
-                            <span>⏱</span>
-                            <span>{srv.duration}</span>
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-               {/* SECTION 3: ADDITIONAL NOTES */}
-               <div className="space-y-4 pt-4 sm:pt-6 border-t border-[var(--sc-border)]/60">
-                 <div className="flex items-center gap-3">
-                   <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
-                     3
-                   </div>
-                   <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
-                     Additional Notes <span className="text-xs font-normal text-[var(--sc-text-dimmer)]">(optional)</span>
-                   </h2>
-                 </div>
-
-                <textarea
-                  rows={4}
-                  value={additionalNotes}
-                  onChange={(e) => setAdditionalNotes(e.target.value)}
-                  placeholder="Design preferences, skin allergies, special requirements..."
-                  className="w-full p-4 rounded-2xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
-                />
-              </div>
-
-              {/* SECTION 4: PAYMENT & SLOT DEPOSIT */}
-              {(() => {
-                const selectedMehendiObj = MEHENDI_SERVICES.find((s) => s.id === selectedMehendiService);
-                const srvPrice = selectedMehendiObj ? selectedMehendiObj.price : '₹200';
-                const isBridal = selectedMehendiService.includes('bridal');
-                const defaultAdvance = isBridal ? '₹500' : '₹100';
-                const defaultAdvanceNum = isBridal ? 500 : 100;
-                const fullPriceNum = parseInt(srvPrice.replace(/[^0-9]/g, ''), 10) || (isBridal ? 2000 : 200);
-                const currentPayableAmount = paymentOption === 'advance' ? defaultAdvance : srvPrice;
-                const currentPayableNum = paymentOption === 'advance' ? defaultAdvanceNum : fullPriceNum;
-
-                return (
-                <div className="space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t border-[var(--sc-border)]/60">
-                     <div className="flex items-center justify-between">
-                       <div className="flex items-center gap-3">
-                         <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
-                           4
-                         </div>
-                        <div>
-                          <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
-                            Select Payment Method ({currentPayableAmount})
-                          </h2>
-                          <p className="text-xs text-[var(--sc-text-dim)]">
-                            Choose your preferred payment mode to secure your appointment slot.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Deposit Option Selector */}
-                    <div className="grid grid-cols-2 gap-3 bg-[var(--sc-accent-warm)] p-1.5 rounded-2xl border border-[var(--sc-border)]">
-                      <button
-                        type="button"
-                        onClick={() => setPaymentOption('advance')}
-                        className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                          paymentOption === 'advance'
-                            ? 'bg-[var(--sc-emerald)] text-white shadow-xs'
-                            : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
-                        }`}
-                      >
-                        <span>🛡️ Slot Deposit ({defaultAdvance})</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPaymentOption('full')}
-                        className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                          paymentOption === 'full'
-                            ? 'bg-[var(--sc-emerald)] text-white shadow-xs'
-                            : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
-                        }`}
-                      >
-                        <span>✨ Full Payment ({srvPrice})</span>
-                      </button>
-                    </div>
-
-                    <div className="bg-[var(--sc-bg-soft)] border border-[var(--sc-border)] rounded-2xl p-5 space-y-4 shadow-xs">
-                        <div className="flex items-center justify-between border-b border-[var(--sc-border)] pb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xl">💳</span>
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{icon}</span>
                             <div>
-                              <h4 className="font-bold text-xs text-[var(--sc-text)]">Razorpay Official Secure Checkout</h4>
-                              <p className="text-[11px] text-[var(--sc-text-dim)]">One-click pay via UPI, Google Pay, PhonePe, Paytm, Cards, or NetBanking</p>
+                              <div className="font-bold text-xs">{label}</div>
+                              <div className={`text-[10px] ${isSelected ? 'text-emerald-100' : 'text-[var(--sc-text-dim)]'}`}>
+                                {timeRange}
+                              </div>
+                              {(isBooked || isDisabled) && (
+                                <div className="text-[10px] text-red-500 font-medium mt-0.5">
+                                  {isBooked ? '✓ Already Booked' : '✕ Slot Disabled'}
+                                </div>
+                              )}
                             </div>
                           </div>
-                          <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-1 rounded-full border border-emerald-300 flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-                            <span>Instant Confirmation</span>
-                          </span>
-                        </div>
+                          {isSelected && (
+                            <span className="material-symbols-outlined text-sm">check_circle</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {getAvailableSlots(selectedDate).length === 0 && !isDateFullyBooked(selectedDate) && (
+                    <p className="text-[11px] text-amber-600 font-medium mt-1">No slots available for this date.</p>
+                  )}
+                </div>
+              </div>
+            </div>
 
-                        <div className="bg-[var(--sc-surface)] p-4 rounded-xl border border-[var(--sc-border)] flex items-center justify-between text-xs">
-                          <div>
-                            <span className="text-[var(--sc-text-dim)] text-[11px] block">Amount Payable Now:</span>
-                            <strong className="text-lg text-[var(--sc-emerald-dark)]">{currentPayableAmount}</strong>
-{paymentOption === 'advance' && (
-                      <p className="text-[10px] text-[var(--sc-emerald-dark)] font-medium">Amount to be paid after service: {srvPrice}</p>
-                    )}
-                          </div>
-                          {/* <div className="text-right">
+            {/* SECTION 2: SELECT SERVICE */}
+            <div className="space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t border-[var(--sc-border)]/60">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                  2
+                </div>
+                <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
+                  Select Service
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+                {MEHENDI_SERVICES.map((srv) => {
+                  const isSelected = selectedMehendiService === srv.id;
+
+                  return (
+                    <div
+                      key={srv.id}
+                      onClick={() => setSelectedMehendiService(srv.id)}
+                      className={`bg-[var(--sc-surface)] rounded-2xl p-5 border cursor-pointer transition-all flex flex-col justify-between shadow-xs ${isSelected
+                          ? 'border-2 border-[var(--sc-emerald)] bg-[var(--sc-bg-soft)] ring-2 ring-[var(--sc-emerald)]/20 shadow-md'
+                          : 'border-[var(--sc-border)] hover:border-[var(--sc-emerald)]/60'
+                        }`}
+                    >
+                      <div className="space-y-2">
+                        <div className="text-2xl">{srv.icon}</div>
+                        <h3 className="font-serif font-bold text-base text-[var(--sc-text)]">
+                          {srv.title}
+                        </h3>
+                        <div className="text-xs font-bold text-[var(--sc-emerald-dark)]">
+                          {srv.price}
+                        </div>
+                        <p className="text-[11px] text-[var(--sc-text-dim)]">
+                          {srv.subtext}
+                        </p>
+                      </div>
+
+                      <div className="pt-4">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--sc-emerald-dark)] bg-[var(--sc-emerald)]/10 px-3 py-1 rounded-full border border-[var(--sc-emerald)]/20">
+                          <span>⏱</span>
+                          <span>{srv.duration}</span>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* SECTION 3: ADDITIONAL NOTES */}
+            <div className="space-y-4 pt-4 sm:pt-6 border-t border-[var(--sc-border)]/60">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                  3
+                </div>
+                <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
+                  Additional Notes <span className="text-xs font-normal text-[var(--sc-text-dimmer)]">(optional)</span>
+                </h2>
+              </div>
+
+              <textarea
+                rows={4}
+                value={additionalNotes}
+                onChange={(e) => setAdditionalNotes(e.target.value)}
+                placeholder="Design preferences, skin allergies, special requirements..."
+                className="w-full p-4 rounded-2xl bg-[var(--sc-accent-warm)] border border-[var(--sc-border)] text-xs font-medium text-[var(--sc-text)] focus:outline-none focus:border-[var(--sc-emerald)] focus:bg-[var(--sc-surface)] shadow-xs"
+              />
+            </div>
+
+            {/* SECTION 4: PAYMENT & SLOT DEPOSIT */}
+            {(() => {
+              const selectedMehendiObj = MEHENDI_SERVICES.find((s) => s.id === selectedMehendiService);
+              const srvPrice = selectedMehendiObj ? selectedMehendiObj.price : '₹200';
+              const isBridal = selectedMehendiService.includes('bridal');
+              const defaultAdvance = isBridal ? '₹500' : '₹100';
+              const defaultAdvanceNum = isBridal ? 500 : 100;
+              const fullPriceNum = parseInt(srvPrice.replace(/[^0-9]/g, ''), 10) || (isBridal ? 2000 : 200);
+              const currentPayableAmount = paymentOption === 'advance' ? defaultAdvance : srvPrice;
+              const currentPayableNum = paymentOption === 'advance' ? defaultAdvanceNum : fullPriceNum;
+
+              return (
+                <div className="space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t border-[var(--sc-border)]/60">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-[var(--sc-emerald)] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                        4
+                      </div>
+                      <div>
+                        <h2 className="font-serif font-bold text-xl md:text-2xl text-[var(--sc-text)]">
+                          Select Payment Method ({currentPayableAmount})
+                        </h2>
+                        <p className="text-xs text-[var(--sc-text-dim)]">
+                          Choose your preferred payment mode to secure your appointment slot.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Deposit Option Selector */}
+                  <div className="grid grid-cols-2 gap-3 bg-[var(--sc-accent-warm)] p-1.5 rounded-2xl border border-[var(--sc-border)]">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentOption('advance')}
+                      className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${paymentOption === 'advance'
+                          ? 'bg-[var(--sc-emerald)] text-white shadow-xs'
+                          : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
+                        }`}
+                    >
+                      <span>🛡️ Slot Deposit ({defaultAdvance})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentOption('full')}
+                      className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${paymentOption === 'full'
+                          ? 'bg-[var(--sc-emerald)] text-white shadow-xs'
+                          : 'text-[var(--sc-text-dim)] hover:text-[var(--sc-text)]'
+                        }`}
+                    >
+                      <span>✨ Full Payment ({srvPrice})</span>
+                    </button>
+                  </div>
+
+                  <div className="bg-[var(--sc-bg-soft)] border border-[var(--sc-border)] rounded-2xl p-5 space-y-4 shadow-xs">
+                    <div className="flex items-center justify-between border-b border-[var(--sc-border)] pb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">💳</span>
+                        <div>
+                          <h4 className="font-bold text-xs text-[var(--sc-text)]">Razorpay Official Secure Checkout</h4>
+                          <p className="text-[11px] text-[var(--sc-text-dim)]">One-click pay via UPI, Google Pay, PhonePe, Paytm, Cards, or NetBanking</p>
+                        </div>
+                      </div>
+                      <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-1 rounded-full border border-emerald-300 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                        <span>Instant Confirmation</span>
+                      </span>
+                    </div>
+
+                    <div className="bg-[var(--sc-surface)] p-4 rounded-xl border border-[var(--sc-border)] flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-[var(--sc-text-dim)] text-[11px] block">Amount Payable Now:</span>
+                        <strong className="text-lg text-[var(--sc-emerald-dark)]">{currentPayableAmount}</strong>
+                        {paymentOption === 'advance' && (
+                          <p className="text-[10px] text-[var(--sc-emerald-dark)] font-medium">Amount to be paid after service: {srvPrice}</p>
+                        )}
+                      </div>
+                      {/* <div className="text-right">
                             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
                               ✓ Zero manual UTR typing required
                             </span>
                           </div> */}
-                        </div>
-                      </div>
+                    </div>
                   </div>
-                );
-              })()}
+                </div>
+              );
+            })()}
 
-              {/* CONFIRM BUTTON */}
-              <div className="pt-4">
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-4 rounded-xl bg-[var(--sc-emerald)] text-white font-bold text-sm hover:bg-[var(--sc-emerald-light)] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-99 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <span className="material-symbols-outlined text-sm animate-spin">sync</span>
-                      <span>OPENING RAZORPAY SECURE CHECKOUT...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-sm">lock</span>
-                      <span>
-                        PAY {paymentOption === 'advance' ? (selectedMehendiService.includes('bridal') ? '₹500' : '₹100') : (MEHENDI_SERVICES.find(s => s.id === selectedMehendiService)?.price || '₹200')} VIA RAZORPAY & CONFIRM
-                      </span>
-                    </>
-                  )}
-                </button>
-              </div>
+            {/* CONFIRM BUTTON */}
+            <div className="pt-4">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-4 rounded-xl bg-[var(--sc-emerald)] text-white font-bold text-sm hover:bg-[var(--sc-emerald-light)] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-99 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <>
+                    <span className="material-symbols-outlined text-sm animate-spin">sync</span>
+                    <span>OPENING RAZORPAY SECURE CHECKOUT...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">lock</span>
+                    <span>
+                      PAY {paymentOption === 'advance' ? (selectedMehendiService.includes('bridal') ? '₹500' : '₹100') : (MEHENDI_SERVICES.find(s => s.id === selectedMehendiService)?.price || '₹200')} VIA RAZORPAY & CONFIRM
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
 
-            </form>
-          </div>
+          </form>
         </div>
+      </div>
     </div>
   );
 };

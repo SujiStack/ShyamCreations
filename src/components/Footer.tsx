@@ -1,6 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ViewMode, PendingAuthAction } from '../types';
 import { ServiceCategoryKey } from '../views/HennaBookingView';
+import { LegalModal, LegalDocKey } from './LegalModal';
+import { FooterBrand } from './footer/FooterBrand';
+import { FooterContact } from './footer/FooterContact';
+import { FooterServices } from './footer/FooterServices';
+import { FooterExplore } from './footer/FooterExplore';
+import { FooterPolicies } from './footer/FooterPolicies';
+import { FooterBottomBar } from './footer/FooterBottomBar';
 
 interface FooterProps {
   onNavigate: (view: ViewMode, category?: ServiceCategoryKey) => void;
@@ -9,234 +16,24 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate, isAuthenticated = false, onRequireAuth }) => {
+  const [legalDoc, setLegalDoc] = useState<LegalDocKey | null>(null);
+
   return (
-    <footer className="bg-[var(--sc-surface-alt)] text-[#ded8ce] py-16 px-6 md:px-16 border-t border-[var(--sc-emerald-light)]/20">
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-5 gap-10">
-        {/* Brand Column */}
-        <div className="space-y-4 md:col-span-1">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-[var(--sc-emerald)] text-white font-serif font-black text-lg flex items-center justify-center">
-              S
-            </div>
-            <h3 className="font-serif text-2xl font-bold text-[var(--sc-emerald-light)] tracking-tight">
-              Shyam Creations
-            </h3>
-          </div>
-          <p className="text-xs text-[#a39c91] leading-relaxed">
-            Crafting timeless South Asian bridal stories in Tambaram, Chennai through 2 specialised studio offerings: Bridal Mehendi Artistry & Luxury Jewellery Rentals.
-          </p>
-           <div className="flex items-center gap-3 pt-2 text-[var(--sc-emerald-light)]">
-            <a
-              href="https://wa.me/919363710342"
-              target="_blank"
-              rel="noreferrer"
-              className="w-8 h-8 rounded-full border border-[var(--sc-emerald)]/40 flex items-center justify-center hover:bg-[var(--sc-emerald)] hover:text-[var(--sc-surface-alt)] transition-all"
-              title="WhatsApp Concierge"
-            >
-              <span className="material-symbols-outlined text-sm">chat</span>
-            </a>
-            <button
-              onClick={() => {
-                if (!isAuthenticated && onRequireAuth) {
-                  onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: 'mehendi' });
-                } else {
-                  onNavigate('henna-booking', 'mehendi');
-                }
-              }}
-              className="w-8 h-8 rounded-full border border-[var(--sc-emerald)]/40 flex items-center justify-center hover:bg-[var(--sc-emerald)] hover:text-[var(--sc-surface-alt)] transition-all"
-              title={isAuthenticated ? "Book Mehendi" : "Book Mehendi (Login Required)"}
-            >
-              <span className="material-symbols-outlined text-sm">palette</span>
-            </button>
-            <button
-              onClick={() => onNavigate('product')}
-              className="w-8 h-8 rounded-full border border-[var(--sc-emerald)]/40 flex items-center justify-center hover:bg-[var(--sc-emerald)] hover:text-[var(--sc-surface-alt)] transition-all"
-              title="Jewellery Rental"
-            >
-              <span className="material-symbols-outlined text-sm">diamond</span>
-            </button>
-          </div>
-        </div>
+    <footer className="bg-[var(--sc-surface-alt)] text-[#ded8ce] py-8 px-6 md:px-16 border-t border-[var(--sc-emerald-light)]/20">
+      <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
 
-        {/* Services */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-8">
         <div className="space-y-3">
-          <h4 className="font-serif font-semibold text-sm uppercase tracking-wider text-[var(--sc-emerald-light)]">
-            Studio Services
-          </h4>
-            <ul className="space-y-2 text-xs text-[#a39c91]">
-            <li>
-              <button
-                onClick={() => {
-                  if (!isAuthenticated && onRequireAuth) {
-                    onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: 'mehendi' });
-                  } else {
-                    onNavigate('henna-booking', 'mehendi');
-                  }
-                }}
-                className="hover:text-[var(--sc-emerald-light)] transition-colors"
-              >
-                Bridal & Occasion Mehendi
-              </button>
-            </li>
-            <li>
-              <button onClick={() => onNavigate('product')} className="hover:text-[var(--sc-emerald-light)] transition-colors">
-                Jewellery Rentals & Sales
-              </button>
-            </li>
-            <li>
-              <button onClick={() => onNavigate('check-availability')} className="hover:text-[var(--sc-emerald-light)] transition-colors">
-                Check Availability
-              </button>
-            </li>
-          </ul>
+          <FooterBrand />
         </div>
+        <FooterServices onNavigate={onNavigate} isAuthenticated={isAuthenticated} onRequireAuth={onRequireAuth} />
+        <FooterExplore onNavigate={onNavigate} />
+        <FooterPolicies onOpenLegal={setLegalDoc} />
+        <FooterContact />
 
-        {/* Collections */}
-        <div className="space-y-3">
-          <h4 className="font-serif font-semibold text-sm uppercase tracking-wider text-[var(--sc-emerald-light)]">
-            Jewellery Collections
-          </h4>
-          <ul className="space-y-2 text-xs text-[#a39c91]">
-            <li>
-              <button onClick={() => onNavigate('product')} className="hover:text-[var(--sc-emerald-light)] transition-colors">
-                Bridal Kundan Sets
-              </button>
-            </li>
-            <li>
-              <button onClick={() => onNavigate('product')} className="hover:text-[var(--sc-emerald-light)] transition-colors">
-                Jaipur Polki Chokers
-              </button>
-            </li>
-            <li>
-              <button onClick={() => onNavigate('product')} className="hover:text-[var(--sc-emerald-light)] transition-colors">
-                Guttapusalu Hair Ornaments
-              </button>
-            </li>
-          </ul>
-        </div>
-
-        {/* Henna Experience */}
-        <div className="space-y-3">
-          <h4 className="font-serif font-semibold text-sm uppercase tracking-wider text-[var(--sc-emerald-light)]">
-            HennaBliss Studio
-          </h4>
-          <ul className="space-y-2 text-xs text-[#a39c91]">
-            <li>
-              <button
-                onClick={() => {
-                  if (!isAuthenticated && onRequireAuth) {
-                    onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: 'mehendi' });
-                  } else {
-                    onNavigate('henna-booking');
-                  }
-                }}
-                className="hover:text-[var(--sc-emerald-light)] transition-colors"
-              >
-                Bridal Mehandi Packages
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => {
-                  if (!isAuthenticated && onRequireAuth) {
-                    onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: 'mehendi' });
-                  } else {
-                    onNavigate('henna-booking');
-                  }
-                }}
-                className="hover:text-[var(--sc-emerald-light)] transition-colors"
-              >
-                Sangeet Group Artists
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => {
-                  if (!isAuthenticated && onRequireAuth) {
-                    onRequireAuth({ action: 'mehendi', targetView: 'henna-booking', targetCategory: 'mehendi' });
-                  } else {
-                    onNavigate('henna-booking');
-                  }
-                }}
-                className="hover:text-[var(--sc-emerald-light)] transition-colors"
-              >
-                Master Artists Directory
-              </button>
-            </li>
-            <li>
-              <button onClick={() => onNavigate('my-bookings')} className="hover:text-[var(--sc-emerald-light)] transition-colors">
-                Reschedule / My Appointments
-              </button>
-            </li>
-          </ul>
-        </div>
-
-        {/* Connect & Admin */}
-        <div className="space-y-3">
-          <h4 className="font-serif font-semibold text-sm uppercase tracking-wider text-[var(--sc-emerald-light)]">
-            Connect & Admin
-          </h4>
-          <ul className="space-y-2 text-xs text-[#a39c91]">
-            <li>
-              <button onClick={() => onNavigate('admin')} className="hover:text-[var(--sc-emerald-light)] transition-colors flex items-center gap-2">
-                <span className="material-symbols-outlined text-sm text-[#E0B45F]">admin_panel_settings</span>
-                <span>Admin Portal</span>
-              </button>
-            </li>
-          </ul>
-          <div className="flex items-center gap-3 pt-4 border-t border-[var(--sc-border-dark)]">
-            <a
-              href="https://instagram.com/shyam_creations_studio"
-              target="_blank"
-              rel="noreferrer"
-              className="w-9 h-9 rounded-full bg-[#E1306C] text-white flex items-center justify-center hover:bg-[#C13584] transition-all shadow-md"
-              title="Instagram"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-              </svg>
-            </a>
-            <a
-              href="https://facebook.com/shyamcreations"
-              target="_blank"
-              rel="noreferrer"
-              className="w-9 h-9 rounded-full bg-[#1877F2] text-white flex items-center justify-center hover:bg-[#166FE5] transition-all shadow-md"
-              title="Facebook"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-              </svg>
-            </a>
-            <a
-              href="https://youtube.com/@shyamcreations"
-              target="_blank"
-              rel="noreferrer"
-              className="w-9 h-9 rounded-full bg-[#FF0000] text-white flex items-center justify-center hover:bg-[#CC0000] transition-all shadow-md"
-              title="YouTube"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-              </svg>
-            </a>
-            <a
-              href="mailto:shyamcreationstudio@gmail.com"
-              className="w-9 h-9 rounded-full bg-[#EA4335] text-white flex items-center justify-center hover:bg-[#D93025] transition-all shadow-md"
-              title="Email"
-            >
-              <span className="material-symbols-outlined text-base">mail</span>
-            </a>
-          </div>
-        </div>
       </div>
 
-      <div className="max-w-7xl mx-auto border-t border-[var(--sc-border-dark)] mt-12 pt-6 flex flex-col md:flex-row justify-between items-center text-[11px] text-[var(--sc-text-dimmer)]">
-        <p>© 2026 Shyam Creations. All rights reserved.</p>
-        <div className="flex gap-6 mt-4 md:mt-0">
-          <span className="hover:text-[var(--sc-emerald-light)] cursor-pointer">Privacy Policy</span>
-          <span className="hover:text-[var(--sc-emerald-light)] cursor-pointer">Rental Terms</span>
-          <span className="hover:text-[var(--sc-emerald-light)] cursor-pointer">Sanitization Standards</span>
-        </div>
-      </div>
+      <FooterBottomBar onNavigate={onNavigate} />
     </footer>
   );
 };

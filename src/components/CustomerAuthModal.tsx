@@ -500,10 +500,10 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 </div>
               </div>
 
-              <div className="p-2.5 bg-[var(--sc-surface-alt-card)] rounded-xl border border-[#2f342f] text-[11px] text-[#a39c91] flex items-center gap-2">
+              {/* <div className="p-2.5 bg-[var(--sc-surface-alt-card)] rounded-xl border border-[#2f342f] text-[11px] text-[#a39c91] flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#E0B45F] text-sm">verified_user</span>
                 <span>Secure Supabase Auth — passwords are never stored in plain text</span>
-              </div>
+              </div> */}
 
               <button
                 id="btn-submit-signup"

@@ -57,16 +57,24 @@ export const Navigation: React.FC<NavigationProps> = ({
             <button
               id="brand-logo-btn"
               onClick={() => handleNavClick('home')}
-              className="text-left group cursor-pointer"
+              className="flex items-center gap-3 text-left group cursor-pointer"
             >
-              <span className="font-serif text-xl md:text-2xl font-semibold text-[#2B231A] tracking-tight group-hover:opacity-85 transition-opacity">
-                Shyam Creations
-              </span>
-              {currentView !== 'product' && (
-                <span className="block text-[9px] tracking-widest text-[#8A7F72] uppercase font-bold">
-                  Artisanal Bridal Studio
+              {/* Logo — served from /public (root path, no "public/" prefix) */}
+              <img
+                src="/ShyamCreation.png"
+                alt="Shyam Creations logo"
+                className="h-9 w-9 md:h-10 md:w-10 shrink-0"
+              />
+              <span>
+                <span className="font-serif text-xl md:text-2xl font-semibold text-[#2B231A] tracking-tight group-hover:opacity-85 transition-opacity">
+                  Shyam Creations
                 </span>
-              )}
+                {currentView !== 'product' && (
+                  <span className="block text-[9px] tracking-widest text-[#8A7F72] uppercase font-bold">
+                    Artisanal Bridal Studio
+                  </span>
+                )}
+              </span>
             </button>
 
             {/* Desktop Nav Links */}
@@ -75,21 +83,21 @@ export const Navigation: React.FC<NavigationProps> = ({
                 Overview
               </button>
 
-             <button
-               id="nav-mehendi"
-               onClick={() => {
-                 if (!isAuthenticated) {
-                   onOpenAuthModal?.({ action: 'mehendi', targetView: 'henna-booking', targetCategory: 'mehendi' });
-                 } else {
-                   handleNavClick('henna-booking', 'mehendi');
-                 }
-               }}
-               className={navLinkClass(currentView === 'henna-booking' && isAuthenticated)}
-               title="Bridal & Occasion Mehendi Appointment (Login Required)"
-             >
-               <span className="material-symbols-outlined text-sm text-[var(--sc-emerald)]">palette</span>
-               <span>Mehendi</span>
-             </button>
+              <button
+                id="nav-mehendi"
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    onOpenAuthModal?.({ action: 'mehendi', targetView: 'henna-booking', targetCategory: 'mehendi' });
+                  } else {
+                    handleNavClick('henna-booking', 'mehendi');
+                  }
+                }}
+                className={navLinkClass(currentView === 'henna-booking' && isAuthenticated)}
+                title="Bridal & Occasion Mehendi Appointment (Login Required)"
+              >
+                <span className="material-symbols-outlined text-sm text-[var(--sc-emerald)]">palette</span>
+                <span>Mehendi</span>
+              </button>
 
               <button
                 id="nav-jewellery"
@@ -101,10 +109,6 @@ export const Navigation: React.FC<NavigationProps> = ({
                 <span>Jewellery</span>
               </button>
 
-              <button id="nav-my-bookings" onClick={() => handleNavClick('my-bookings')} className={navLinkClass(currentView === 'my-bookings')}>
-                My Bookings
-              </button>
-
               <button
                 id="nav-check-availability"
                 onClick={() => handleNavClick('check-availability')}
@@ -114,6 +118,12 @@ export const Navigation: React.FC<NavigationProps> = ({
                 <span className="material-symbols-outlined text-sm text-[var(--sc-emerald)]">event_available</span>
                 <span>Check Availability</span>
               </button>
+
+              <button id="nav-my-bookings" onClick={() => handleNavClick('my-bookings')} className={navLinkClass(currentView === 'my-bookings')}>
+                My Bookings
+              </button>
+
+
             </div>
           </div>
 

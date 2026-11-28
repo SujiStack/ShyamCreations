@@ -15,7 +15,12 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
   hennaBookings = [],
   disabledSlots = [],
 }) => {
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  const minDate = new Date();
+  minDate.setDate(minDate.getDate() + 2);
+  const minDateISO = minDate.toISOString().split('T')[0];
+
+  const [selectedDate, setSelectedDate] = useState<string>(minDateISO);
 
   // Check if a slot is already booked
   const isSlotBooked = useMemo(() => (date: string, timeSlot: string) => {
@@ -35,13 +40,13 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
       { id: 'morning', label: 'Morning Slot', time: '09:00 AM - 01:00 PM', icon: '🌅', fullSlot: 'Morning Slot (09:00 AM - 01:00 PM)' },
       { id: 'evening', label: 'Evening Slot', time: '04:00 PM - 09:00 PM', icon: '🌙', fullSlot: 'Evening Slot (04:00 PM - 09:00 PM)' },
     ];
-    
+
     return slots.map((slot) => ({
       ...slot,
       isBooked: isSlotBooked(date, slot.fullSlot),
       isDisabled: isSlotDisabled(date, slot.fullSlot),
-      status: isSlotBooked(date, slot.fullSlot) ? 'booked' : 
-              isSlotDisabled(date, slot.fullSlot) ? 'disabled' : 'available',
+      status: isSlotBooked(date, slot.fullSlot) ? 'booked' :
+        isSlotDisabled(date, slot.fullSlot) ? 'disabled' : 'available',
     }));
   }, [isSlotBooked, isSlotDisabled]);
 
@@ -60,7 +65,7 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
       const hasAvailable = availability.some((s) => s.status === 'available');
       const allBooked = availability.every((s) => s.status === 'booked');
       const allDisabled = availability.every((s) => s.status === 'disabled');
-      
+
       dates.push({
         date: dateStr,
         dayName: date.toLocaleDateString('en-IN', { weekday: 'short' }),
@@ -70,7 +75,7 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
         hasAvailable,
         isFullyBooked: allBooked,
         isFullyDisabled: allDisabled,
-        isPast: date < new Date(new Date().setHours(0,0,0,0)),
+        isPast: date < new Date(new Date().setHours(0, 0, 0, 0)),
       });
     }
     return dates;
@@ -89,7 +94,7 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
     <div className="pt-20 pb-16 px-2 sm:px-4 md:px-8 max-w-5xl mx-auto space-y-6 sm:space-y-8">
       {/* Header */}
       <div className="text-center py-8 px-6 space-y-3 bg-[var(--sc-bg-soft)] border border-[var(--sc-border)] rounded-3xl">
-        <p className="text-[10px] md:text-xs font-bold tracking-[0.25em] text-[var(--sc-emerald-dark)] uppercase">
+        <p className="text-[10px] md:text-xs font-bold tracking-[0.25em] text-[var(--sc-emerald-dark)] upperc ase">
           ✦ CHECK SLOT AVAILABILITY ✦
         </p>
         <h1 className="font-serif text-3xl md:text-4xl text-[var(--sc-text)] font-bold tracking-tight">
@@ -121,7 +126,7 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
               <DateInputDDMMYY
                 value={selectedDate}
                 onChange={handleDateChange}
-                min={new Date().toISOString().split('T')[0]}
+                min={minDateISO}
                 className="w-44"
               />
             </div>
@@ -137,8 +142,8 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
                 <tr>
                   <th className="p-3">Day</th>
                   <th className="p-3">Date</th>
-                  <th className="p-3">Morning Slot<br/>(09:00 AM - 01:00 PM)</th>
-                  <th className="p-3">Evening Slot<br/>(04:00 PM - 09:00 PM)</th>
+                  <th className="p-3">Morning Slot<br />(09:00 AM - 01:00 PM)</th>
+                  <th className="p-3">Evening Slot<br />(04:00 PM - 09:00 PM)</th>
                   <th className="p-3">Status</th>
                 </tr>
               </thead>
@@ -146,7 +151,7 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
                 {weekData.map((day) => {
                   const morning = day.availability.find((s) => s.id === 'morning');
                   const evening = day.availability.find((s) => s.id === 'evening');
-                  
+
                   return (
                     <tr key={day.date} className={`hover:bg-[var(--sc-accent-warm)] transition-colors ${day.isPast ? 'opacity-50' : ''}`}>
                       <td className="p-3 font-semibold text-[var(--sc-text)]">
@@ -157,11 +162,10 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
                       </td>
                       <td className="p-3">
                         {morning && (
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold ${
-                            morning.status === 'available' ? 'bg-emerald-100 text-emerald-800' :
-                            morning.status === 'booked' ? 'bg-red-100 text-red-800' :
-                            'bg-amber-100 text-amber-800'
-                          }`}>
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold ${morning.status === 'available' ? 'bg-emerald-100 text-emerald-800' :
+                              morning.status === 'booked' ? 'bg-red-100 text-red-800' :
+                                'bg-amber-100 text-amber-800'
+                            }`}>
                             {morning.status === 'available' && <span className="w-2 h-2 rounded-full bg-emerald-500"></span>}
                             {morning.status === 'booked' && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
                             {morning.status === 'disabled' && <span className="w-2 h-2 rounded-full bg-amber-500"></span>}
@@ -171,11 +175,10 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
                       </td>
                       <td className="p-3">
                         {evening && (
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold ${
-                            evening.status === 'available' ? 'bg-emerald-100 text-emerald-800' :
-                            evening.status === 'booked' ? 'bg-red-100 text-red-800' :
-                            'bg-amber-100 text-amber-800'
-                          }`}>
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold ${evening.status === 'available' ? 'bg-emerald-100 text-emerald-800' :
+                              evening.status === 'booked' ? 'bg-red-100 text-red-800' :
+                                'bg-amber-100 text-amber-800'
+                            }`}>
                             {evening.status === 'available' && <span className="w-2 h-2 rounded-full bg-emerald-500"></span>}
                             {evening.status === 'booked' && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
                             {evening.status === 'disabled' && <span className="w-2 h-2 rounded-full bg-amber-500"></span>}
@@ -211,13 +214,12 @@ export const CheckAvailabilityView: React.FC<CheckAvailabilityViewProps> = ({
             {weekData.find((d) => d.date === selectedDate)?.availability.map((slot) => (
               <div
                 key={slot.id}
-                className={`p-6 rounded-2xl border-2 text-center transition-all ${
-                  slot.status === 'available'
+                className={`p-6 rounded-2xl border-2 text-center transition-all ${slot.status === 'available'
                     ? 'bg-emerald-50 border-emerald-200 hover:border-emerald-400'
                     : slot.status === 'booked'
-                    ? 'bg-red-50 border-red-200'
-                    : 'bg-amber-50 border-amber-200'
-                }`}
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-amber-50 border-amber-200'
+                  }`}
               >
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <span className="text-3xl">{slot.icon}</span>
